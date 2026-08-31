@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { DivineArtworkGraphic } from './DivineArtworkGraphic';
 import { getDeityImage } from '../utils/imageStorage';
+import { DEFAULT_DEITY_PHOTO_URL } from '../data/deityAsset';
 
 interface DivineEntranceBannerProps {
   onOpenDarshan: () => void;
@@ -23,7 +24,7 @@ export const DivineEntranceBanner: React.FC<DivineEntranceBannerProps> = ({
   customDeityImageUrl,
 }) => {
   const [imgSrc, setImgSrc] = useState<string>(() => {
-    return customDeityImageUrl || localStorage.getItem('varahi_custom_deity_art') || '';
+    return customDeityImageUrl || localStorage.getItem('varahi_custom_deity_art') || DEFAULT_DEITY_PHOTO_URL || '';
   });
   const [hasError, setHasError] = useState(false);
 

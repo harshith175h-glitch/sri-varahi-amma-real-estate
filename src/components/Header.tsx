@@ -31,7 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   customLogoUrl,
   onOpenDarshan,
 }) => {
-  const effectiveLogo = customLogoUrl || '';
+  const effectiveLogo = customLogoUrl || DEFAULT_DEITY_PHOTO_URL || '';
   return (
     <header className="sticky top-0 z-40 bg-gradient-to-b from-[#FAF7F2] via-[#FAF7F2]/98 to-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E6E0D5] text-[#1A1A1A] transition-all shadow-[0_4px_24px_-10px_rgba(26,24,22,0.08)]">
       
