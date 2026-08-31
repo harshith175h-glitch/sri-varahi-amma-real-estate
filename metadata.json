@@ -1,0 +1,6 @@
+{
+  "name": "Sri Varahi Amma Real Estate",
+  "description": "Premium land, plot, and luxury property portal with cloud user accounts, Patta & title deed verification, neutral escrow deal protection, and custom pricing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
