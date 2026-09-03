@@ -10,12 +10,17 @@ const PORT = process.env.PORT || 3000;
 // SECURITY: Rate Limiting & Input Validation
 // ============================================================================
 
+interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
+
 // Simple in-memory rate limiter
-const requestCounts: Map<string, { count: number; resetTime: number }> = new Map();
+const requestCounts = new Map<string, RateLimitRecord>();
 
 function rateLimit(windowMs: number = 15 * 60 * 1000, maxRequests: number = 100) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || "unknown";
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const ip = (req.ip || req.socket.remoteAddress || "unknown") as string;
     const now = Date.now();
     const record = requestCounts.get(ip);
 
@@ -60,7 +65,7 @@ function sanitizeFilePath(filePath: string): boolean {
   return !normalizedPath.includes("..") && !normalizedPath.startsWith("/");
 }
 
-function logSecurityEvent(event: string, details: Record<string, any>) {
+function logSecurityEvent(event: string, details: Record<string, any>): void {
   console.log(`[SECURITY] ${event}`, JSON.stringify(details));
 }
 
@@ -68,19 +73,23 @@ function logSecurityEvent(event: string, details: Record<string, any>) {
 // ENVIRONMENT VALIDATION
 // ============================================================================
 
-const requiredEnvVars = ["GEMINI_API_KEY", "APP_URL"];
-const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
+function validateEnvironment(): void {
+  const requiredEnvVars = ["GEMINI_API_KEY", "APP_URL"];
+  const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
 
-if (missingEnvVars.length > 0 && process.env.NODE_ENV === "production") {
-  console.error(`❌ Missing required environment variables: ${missingEnvVars.join(", ")}`);
-  console.error("Set them in Vercel → Project Settings → Environment Variables");
-  process.exit(1);
+  if (missingEnvVars.length > 0 && process.env.NODE_ENV === "production") {
+    console.error(`❌ Missing required environment variables: ${missingEnvVars.join(", ")}`);
+    console.error("Set them in Vercel → Project Settings → Environment Variables");
+    process.exit(1);
+  }
+
+  if (missingEnvVars.length > 0) {
+    console.warn(`⚠️  Missing environment variables in development: ${missingEnvVars.join(", ")}`);
+    console.warn("Set in .env.local for full functionality");
+  }
 }
 
-if (missingEnvVars.length > 0) {
-  console.warn(`⚠️  Missing environment variables in development: ${missingEnvVars.join(", ")}`);
-  console.warn("Set in .env.local for full functionality");
-}
+validateEnvironment();
 
 // ============================================================================
 // MIDDLEWARE
@@ -89,7 +98,7 @@ if (missingEnvVars.length > 0) {
 app.use(express.json({ limit: "30mb" }));
 
 // Security Headers
-app.use((req, res, next) => {
+app.use((_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
@@ -98,7 +107,7 @@ app.use((req, res, next) => {
 });
 
 // Request logging
-app.use((req, res, next) => {
+app.use((req: Request, _res: Response, next: NextFunction) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
@@ -126,7 +135,7 @@ function loadDeityImageFromDisk(): void {
   try {
     if (fs.existsSync(deityMetaPath)) {
       const raw = fs.readFileSync(deityMetaPath, "utf-8");
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as { imageUrl: string; updatedAt: string; version: number };
       if (parsed.imageUrl && isValidBase64Image(parsed.imageUrl)) {
         inMemoryDeityDataUrl = parsed.imageUrl;
         deityImageCacheTime = Date.now();
@@ -153,7 +162,7 @@ loadDeityImageFromDisk();
  * Health Check Endpoint
  * Used by deployment platforms to verify app is running
  */
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
@@ -162,7 +171,7 @@ app.get("/api/health", (_req, res) => {
  * Retrieve deity image for cross-device synchronization
  * Response: { imageUrl: "data:image/...", url: "/deity.jpg" }
  */
-app.get("/api/deity-image", (_req, res) => {
+app.get("/api/deity-image", (_req: Request, res: Response) => {
   try {
     // Check if cache is still valid
     if (inMemoryDeityDataUrl && Date.now() - deityImageCacheTime < CACHE_TTL_MS) {
@@ -199,79 +208,83 @@ app.get("/api/deity-image", (_req, res) => {
  * - Max file size: 5MB
  * - Rate limited to 100 requests per 15 minutes
  */
-app.post("/api/deity-image", rateLimit(15 * 60 * 1000, 100), (req: Request, res: Response) => {
-  try {
-    const { imageUrl } = req.body;
-
-    // Validation: Check imageUrl exists
-    if (!imageUrl || typeof imageUrl !== "string") {
-      logSecurityEvent("INVALID_DEITY_IMAGE_REQUEST", {
-        ip: req.ip,
-        reason: "Missing or invalid imageUrl",
-      });
-      res.status(400).json({ error: "Missing or invalid imageUrl parameter" });
-      return;
-    }
-
-    // Validation: Check format and size
-    if (!isValidBase64Image(imageUrl)) {
-      logSecurityEvent("INVALID_DEITY_IMAGE_FORMAT", {
-        ip: req.ip,
-        reason: "Invalid base64 format or exceeds size limit",
-        size: Buffer.byteLength(imageUrl, "utf8"),
-      });
-      res.status(400).json({
-        error: "Invalid image format or exceeds 5MB limit. Must be data:image/...",
-      });
-      return;
-    }
-
-    // Update in-memory cache
-    inMemoryDeityDataUrl = imageUrl;
-    deityImageCacheTime = Date.now();
-
-    // Persist to disk
+app.post(
+  "/api/deity-image",
+  rateLimit(15 * 60 * 1000, 100),
+  (req: Request, res: Response): void => {
     try {
-      // Save metadata JSON
-      fs.writeFileSync(
-        deityMetaPath,
-        JSON.stringify(
-          { imageUrl, updatedAt: new Date().toISOString(), version: 1 },
-          null,
-          2
-        ),
-        "utf-8"
-      );
+      const { imageUrl } = req.body as { imageUrl?: string };
 
-      // Extract and save binary image if it's a data URL
-      if (imageUrl.startsWith("data:image/")) {
-        const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, "");
-        fs.writeFileSync(deityFilePath, Buffer.from(base64Data, "base64"));
-        console.log(`✅ Deity image saved (${Buffer.byteLength(base64Data, "utf8")} bytes)`);
+      // Validation: Check imageUrl exists
+      if (!imageUrl || typeof imageUrl !== "string") {
+        logSecurityEvent("INVALID_DEITY_IMAGE_REQUEST", {
+          ip: req.ip,
+          reason: "Missing or invalid imageUrl",
+        });
+        res.status(400).json({ error: "Missing or invalid imageUrl parameter" });
+        return;
       }
 
-      logSecurityEvent("DEITY_IMAGE_UPLOADED", {
-        ip: req.ip,
-        size: Buffer.byteLength(imageUrl, "utf8"),
-        timestamp: new Date().toISOString(),
-      });
+      // Validation: Check format and size
+      if (!isValidBase64Image(imageUrl)) {
+        logSecurityEvent("INVALID_DEITY_IMAGE_FORMAT", {
+          ip: req.ip,
+          reason: "Invalid base64 format or exceeds size limit",
+          size: Buffer.byteLength(imageUrl, "utf8"),
+        });
+        res.status(400).json({
+          error: "Invalid image format or exceeds 5MB limit. Must be data:image/...",
+        });
+        return;
+      }
 
-      res.status(200).json({
-        success: true,
-        message: "Deity image synchronized globally across all devices",
-        timestamp: new Date().toISOString(),
-      });
-    } catch (diskErr) {
-      console.error("❌ Failed to persist deity image to disk:", diskErr);
-      logSecurityEvent("DISK_WRITE_ERROR", { error: String(diskErr) });
-      res.status(500).json({ error: "Failed to persist image to disk" });
+      // Update in-memory cache
+      inMemoryDeityDataUrl = imageUrl;
+      deityImageCacheTime = Date.now();
+
+      // Persist to disk
+      try {
+        // Save metadata JSON
+        fs.writeFileSync(
+          deityMetaPath,
+          JSON.stringify(
+            { imageUrl, updatedAt: new Date().toISOString(), version: 1 },
+            null,
+            2
+          ),
+          "utf-8"
+        );
+
+        // Extract and save binary image if it's a data URL
+        if (imageUrl.startsWith("data:image/")) {
+          const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, "");
+          fs.writeFileSync(deityFilePath, Buffer.from(base64Data, "base64"));
+          console.log(`✅ Deity image saved (${Buffer.byteLength(base64Data, "utf8")} bytes)`);
+        }
+
+        logSecurityEvent("DEITY_IMAGE_UPLOADED", {
+          ip: req.ip,
+          size: Buffer.byteLength(imageUrl, "utf8"),
+          timestamp: new Date().toISOString(),
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Deity image synchronized globally across all devices",
+          timestamp: new Date().toISOString(),
+        });
+      } catch (diskErr) {
+        console.error("❌ Failed to persist deity image to disk:", diskErr);
+        logSecurityEvent("DISK_WRITE_ERROR", { error: String(diskErr) });
+        res.status(500).json({ error: "Failed to persist image to disk" });
+      }
+    } catch (err) {
+      console.error("❌ Unhandled error in deity-image POST:", err);
+      logSecurityEvent("UNHANDLED_ERROR", { endpoint: "/api/deity-image", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
     }
-  } catch (err) {
-    console.error("❌ Unhandled error in deity-image POST:", err);
-    logSecurityEvent("UNHANDLED_ERROR", { endpoint: "/api/deity-image", error: String(err) });
-    res.status(500).json({ error: "Internal server error" });
   }
-});
+);
 
 // ============================================================================
 // STATIC FILE SERVING
@@ -283,7 +296,7 @@ app.use(express.static(publicDir));
 // VITE & SPA ROUTING
 // ============================================================================
 
-async function startServer() {
+async function startServer(): Promise<void> {
   try {
     if (process.env.NODE_ENV !== "production") {
       // Development: Use Vite middleware for HMR
@@ -304,10 +317,10 @@ async function startServer() {
     }
 
     // SPA fallback: Route all unmatched requests to index.html
-    app.get("*", (_req, res) => {
+    app.get("*", (_req: Request, res: Response) => {
       const indexPath = path.join(process.cwd(), "dist", "index.html");
       if (process.env.NODE_ENV === "production") {
-        res.sendFile(indexPath, (err) => {
+        res.sendFile(indexPath, (err: any) => {
           if (err) {
             console.error("Error sending index.html:", err);
             res.status(500).send("Internal server error");
@@ -320,14 +333,25 @@ async function startServer() {
     });
 
     // Start listening
-    app.listen(PORT, "0.0.0.0", () => {
+    const server = app.listen(PORT, "0.0.0.0", () => {
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("🏡 Sri Varahi Amma Real Estate Server");
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log(`🌐 URL: http://localhost:${PORT}`);
       console.log(`📦 Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`🔑 API Key loaded: ${process.env.GEMINI_API_KEY ? "✅" : "❌"}`);
+      console.log(`🛡️  Rate limiting: Enabled (100 req/15min)`);
+      console.log(`🔐 Security headers: Enabled`);
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    });
+
+    // Graceful shutdown
+    process.on("SIGTERM", () => {
+      console.log("SIGTERM received, shutting down gracefully...");
+      server.close(() => {
+        console.log("Server closed");
+        process.exit(0);
+      });
     });
   } catch (err) {
     console.error("❌ Failed to start server:", err);
@@ -343,9 +367,11 @@ startServer();
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+  logSecurityEvent("UNHANDLED_REJECTION", { reason: String(reason) });
 });
 
 process.on("uncaughtException", (error) => {
   console.error("❌ Uncaught Exception:", error);
+  logSecurityEvent("UNCAUGHT_EXCEPTION", { error: String(error) });
   process.exit(1);
 });
