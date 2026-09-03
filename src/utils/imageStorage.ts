@@ -78,7 +78,8 @@ async function syncLocalToServer(dataUrl: string): Promise<void> {
 async function fetchImageFromServer(): Promise<string | null> {
   try {
     const res = await fetch('/api/deity-image');
-    if (res.ok) {
+    const contentType = res.headers.get('content-type');
+    if (res.ok && contentType && contentType.includes('application/json')) {
       const data = await res.json();
       if (data && data.imageUrl) {
         console.log('[imageStorage] Loaded shared deity image from server');
@@ -92,7 +93,8 @@ async function fetchImageFromServer(): Promise<string | null> {
   // Also check direct static /deity.jpg
   try {
     const imgCheck = await fetch('/deity.jpg', { method: 'HEAD' });
-    if (imgCheck.ok) {
+    const contentType = imgCheck.headers.get('content-type');
+    if (imgCheck.ok && contentType && contentType.includes('image/')) {
       return '/deity.jpg';
     }
   } catch {
