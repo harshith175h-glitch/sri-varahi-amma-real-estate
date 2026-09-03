@@ -11,7 +11,7 @@ export const DivineArtworkGraphic: React.FC<DivineArtworkGraphicProps> = ({
   className = 'w-full h-full',
   imageUrl 
 }) => {
-  const photo = imageUrl || DEFAULT_DEITY_PHOTO_URL || '/deity.jpg';
+  const photo = imageUrl || DEFAULT_DEITY_PHOTO_URL || '/Gemini_Generated_Image_p7sjh2p7sjh2p7sj.png';
 
   return (
     <div className={`relative w-full h-full overflow-hidden select-none bg-gradient-to-b from-[#14100C] via-[#1F1914] to-[#0D0A08] flex items-center justify-center ${className}`}>

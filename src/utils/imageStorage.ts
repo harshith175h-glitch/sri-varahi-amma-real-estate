@@ -90,8 +90,14 @@ async function fetchImageFromServer(): Promise<string | null> {
     // ignore
   }
 
-  // Also check direct static /deity.jpg
+  // Also check direct static images
   try {
+    const geminiCheck = await fetch('/Gemini_Generated_Image_p7sjh2p7sjh2p7sj.png', { method: 'HEAD' });
+    const geminiType = geminiCheck.headers.get('content-type');
+    if (geminiCheck.ok && geminiType && geminiType.includes('image/')) {
+      return '/Gemini_Generated_Image_p7sjh2p7sjh2p7sj.png';
+    }
+
     const imgCheck = await fetch('/deity.jpg', { method: 'HEAD' });
     const contentType = imgCheck.headers.get('content-type');
     if (imgCheck.ok && contentType && contentType.includes('image/')) {
