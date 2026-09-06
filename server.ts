@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import fs from "fs";
+import http from "http";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
@@ -298,14 +299,27 @@ app.use(express.static(publicDir));
 
 async function startServer(): Promise<void> {
   try {
+    // Create a single HTTP server so Vite's HMR WebSocket can share the same
+    // port that Express listens on. In middleware mode Vite otherwise starts a
+    // separate WebSocket server on its own port, which is not reachable through
+    // the preview proxy (all traffic is proxied to the Express port over HTTPS),
+    // producing "WebSocket closed without opened" errors in the browser.
+    const httpServer = http.createServer(app);
+
     if (process.env.NODE_ENV !== "production") {
       // Development: Use Vite middleware for HMR
+      const hmrEnabled = process.env.DISABLE_HMR !== "true";
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: {
+          middlewareMode: true,
+          // Attach HMR to the shared HTTP server so the WebSocket upgrade is
+          // handled on the same port that is exposed through the proxy.
+          hmr: hmrEnabled ? { server: httpServer } : false,
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);
-      console.log("✅ Vite middleware enabled (dev mode)");
+      console.log(`✅ Vite middleware enabled (dev mode, HMR ${hmrEnabled ? "on" : "off"})`);
     } else {
       // Production: Serve pre-built static files
       const distPath = path.join(process.cwd(), "dist");
@@ -333,7 +347,7 @@ async function startServer(): Promise<void> {
     });
 
     // Start listening
-    const server = app.listen(PORT, "0.0.0.0", () => {
+    const server = httpServer.listen(PORT, "0.0.0.0", () => {
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("🏡 Sri Varahi Amma Real Estate Server");
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
