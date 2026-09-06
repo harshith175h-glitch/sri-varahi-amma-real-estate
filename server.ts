@@ -299,21 +299,24 @@ app.use(express.static(publicDir));
 
 async function startServer(): Promise<void> {
   try {
-    // Create a single HTTP server so Vite's HMR WebSocket can share the same
-    // port that Express listens on. In middleware mode Vite otherwise starts a
-    // separate WebSocket server on its own port, which is not reachable through
-    // the preview proxy (all traffic is proxied to the Express port over HTTPS),
-    // producing "WebSocket closed without opened" errors in the browser.
     const httpServer = http.createServer(app);
 
     if (process.env.NODE_ENV !== "production") {
-      // Development: Use Vite middleware for HMR
-      const hmrEnabled = process.env.DISABLE_HMR !== "true";
+      // Development: Use Vite middleware for SPA serving.
+      //
+      // Vite's HMR client (@vite/client) opens a WebSocket back to the dev
+      // server. Behind the v0 preview proxy that WebSocket upgrade is not
+      // forwarded, so the client repeatedly fails with "WebSocket closed
+      // without opened". The preview layer already reloads the page on file
+      // changes, so Vite's own HMR socket is redundant here — disabling it
+      // stops the client from attempting the failing connection.
+      //
+      // Set VITE_ENABLE_HMR=true to re-enable Vite HMR for local development
+      // outside the proxied preview.
+      const hmrEnabled = process.env.VITE_ENABLE_HMR === "true";
       const vite = await createViteServer({
         server: {
           middlewareMode: true,
-          // Attach HMR to the shared HTTP server so the WebSocket upgrade is
-          // handled on the same port that is exposed through the proxy.
           hmr: hmrEnabled ? { server: httpServer } : false,
         },
         appType: "spa",
