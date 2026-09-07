@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import fs from "fs";
+import http from "http";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
@@ -298,14 +299,39 @@ app.use(express.static(publicDir));
 
 async function startServer(): Promise<void> {
   try {
+    const httpServer = http.createServer(app);
+
     if (process.env.NODE_ENV !== "production") {
-      // Development: Use Vite middleware for HMR
+      // Development: Use Vite middleware for SPA serving with HMR.
+      //
+      // Vite's HMR client (@vite/client) opens a WebSocket back to the dev
+      // server. The v0 preview serves the app over HTTPS on the standard port
+      // (443) through a proxy, so the browser must be told to reach HMR via a
+      // secure WebSocket on that same port — otherwise it tries the raw dev
+      // port over ws:// and fails with "WebSocket closed without opened".
+      //
+      // Server side: attach HMR to the shared HTTP server so the upgrade is
+      // handled on the port the proxy forwards to.
+      // Client side: protocol "wss" + clientPort 443 so the browser connects
+      // through the proxy instead of a non-exposed port.
+      //
+      // Set DISABLE_HMR=true to turn HMR off entirely.
+      const hmrDisabled = process.env.DISABLE_HMR === "true";
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: {
+          middlewareMode: true,
+          hmr: hmrDisabled
+            ? false
+            : {
+                server: httpServer,
+                protocol: "wss",
+                clientPort: 443,
+              },
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);
-      console.log("✅ Vite middleware enabled (dev mode)");
+      console.log(`✅ Vite middleware enabled (dev mode, HMR ${hmrDisabled ? "off" : "on"})`);
     } else {
       // Production: Serve pre-built static files
       const distPath = path.join(process.cwd(), "dist");
@@ -333,7 +359,7 @@ async function startServer(): Promise<void> {
     });
 
     // Start listening
-    const server = app.listen(PORT, "0.0.0.0", () => {
+    const server = httpServer.listen(PORT, "0.0.0.0", () => {
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("🏡 Sri Varahi Amma Real Estate Server");
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
