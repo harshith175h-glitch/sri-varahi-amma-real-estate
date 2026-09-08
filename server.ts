@@ -5,7 +5,7 @@ import http from "http";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = typeof process.env.PORT === "string" ? parseInt(process.env.PORT, 10) : 3000;
 
 // ============================================================================
 // SECURITY: Rate Limiting & Input Validation
