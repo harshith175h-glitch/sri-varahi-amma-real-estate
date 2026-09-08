@@ -58,7 +58,7 @@ function openDB(): Promise<IDBDatabase | null> {
 
 // Push local image to backend server for global cross-device access
 async function syncLocalToServer(dataUrl: string): Promise<void> {
-  if (isSyncing) return;
+  if (isSyncing || !dataUrl || !dataUrl.startsWith('data:image/')) return;
   try {
     isSyncing = true;
     await fetch('/api/deity-image', {
