@@ -16,45 +16,14 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { saveDeityImage, clearDeityImage } from '../utils/imageStorage';
+import { getAdminToken, setAdminToken } from '../utils/api';
 import { DEFAULT_DEITY_PHOTO_URL } from '../data/deityAsset';
+import { BrokerContactConfig, DEFAULT_BROKER_CONFIG } from '../data/brokerDefaults';
 
-export interface BrokerContactConfig {
-  brokerName: string;
-  agencyName: string;
-  phone: string;
-  whatsapp: string;
-  email: string;
-  officeAddress: string;
-  primaryLocations: string[];
-  operatingHours: string;
-  googleRating: string;
-  totalDealsClosed: string;
-  deityImageUrl?: string;
-}
+export type { BrokerContactConfig };
+export { DEFAULT_BROKER_CONFIG };
 
-export const DEFAULT_BROKER_CONFIG: BrokerContactConfig = {
-  brokerName: 'Sri Varahi Amma Broker Desk (Harshith & Team)',
-  agencyName: 'Sri Varahi Amma Real Estate',
-  phone: '+91 6383040407',
-  whatsapp: '+91 6383040407',
-  email: 'harshith175h@gmail.com',
-  officeAddress: 'Main Road, Hosur, Krishnagiri District, Tamil Nadu - 635109 (TN & Karnataka Border)',
-  primaryLocations: [
-    'Hosur (City HQ)',
-    'Krishnagiri District',
-    'Bangalore / Bengaluru Border',
-    'Attibele & Electronic City Corridor',
-    'Thally & Denkanikottai',
-    'Tamil Nadu (All Districts)',
-    'Karnataka (Statewide)',
-    'National & International NRI Deals'
-  ],
-  operatingHours: 'Monday - Sunday: 8:00 AM - 9:00 PM IST (Direct Phone & WhatsApp)',
-  googleRating: '4.9 ★ (150+ Verified Land Closings)',
-  totalDealsClosed: '300+ Verified Land & Property Parcels Handled',
-  deityImageUrl: undefined,
-};
-
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface BrokerContactSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,6 +40,10 @@ export const BrokerContactSettingsModal: React.FC<BrokerContactSettingsModalProp
   const [formData, setFormData] = useState<BrokerContactConfig>(config);
   const [locationInput, setLocationInput] = useState('');
   const [isSaved, setIsSaved] = useState(false);
+  const [adminTokenInput, setAdminTokenInput] = useState(getAdminToken());
+  const [adminTokenSaved, setAdminTokenSaved] = useState(false);
+
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
 
   if (!isOpen) return null;
 
@@ -120,6 +93,9 @@ export const BrokerContactSettingsModal: React.FC<BrokerContactSettingsModalProp
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    // Keep the token used to authorise global branding uploads.
+    setAdminToken(adminTokenInput.trim());
+    setAdminTokenSaved(Boolean(adminTokenInput.trim()));
     onSaveConfig(formData);
     if (formData.deityImageUrl) {
       saveDeityImage(formData.deityImageUrl);
@@ -149,7 +125,11 @@ export const BrokerContactSettingsModal: React.FC<BrokerContactSettingsModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-[#FAF8F5] w-full max-w-2xl rounded-2xl shadow-2xl border border-[#E5E1DA] overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Modal Header */}
@@ -251,8 +231,34 @@ export const BrokerContactSettingsModal: React.FC<BrokerContactSettingsModalProp
                 </div>
 
                 <p className="text-[11px] text-[#8C7A65]">
-                  Select any photo or enter an image URL. All customer screens update instantly.
+                  Select any photo or enter an image URL. The image is stored on this device straight away; to
+                  publish it for every visitor, enter the shared admin token below.
                 </p>
+
+                <div className="pt-1">
+                  <label htmlFor="broker-admin-token" className="block text-[11px] font-bold text-[#8C7A65] mb-1">
+                    Global sync admin token (optional)
+                  </label>
+                  <input
+                    id="broker-admin-token"
+                    type="password"
+                    autoComplete="off"
+                    value={adminTokenInput}
+                    onChange={(e) => {
+                      setAdminTokenInput(e.target.value);
+                      setAdminTokenSaved(false);
+                    }}
+                    placeholder="ADMIN_API_TOKEN configured on the server"
+                    className="w-full px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E5E1DA] text-xs text-[#1A1A1A] focus:outline-none focus:border-[#C4A484]"
+                  />
+                  <p className="text-[10px] text-[#8C7A65] mt-1 leading-relaxed">
+                    {adminTokenInput.trim()
+                      ? adminTokenSaved
+                        ? 'Token saved on this device. Uploads will sync to all visitors.'
+                        : 'Press “Save Branding & Contact” to apply the token.'
+                      : 'Without a token the upload stays private to this browser — a public write endpoint would let anyone replace your logo.'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

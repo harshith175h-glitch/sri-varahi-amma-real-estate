@@ -20,6 +20,23 @@ A premium real estate platform offering verified plots, DTCP/CMDA approved layou
 
 ---
 
+## Planning & launch docs
+
+| Document | What it covers |
+|---|---|
+| **[STEP-BY-STEP-PLAN.md](STEP-BY-STEP-PLAN.md)** | The ordered launch plan: lead alerts ("ping your phone"), MSG91 OTP vs bulk SMS + DLT, compliance pages, TNRERA agent registration, publishing real photos, map search |
+| [OWNER-GUIDE.md](OWNER-GUIDE.md) | The 24 launch gates and what is done vs pending |
+| [AUDIT-REPORT.md](AUDIT-REPORT.md) | Full security/performance audit and what was fixed |
+| [PREVIEW-GUIDE.md](PREVIEW-GUIDE.md) | How to preview the site three ways + 18-step click-through |
+
+**Restoring demo content** (listings live in git-ignored `data/`, so they vanish on a rebuild):
+
+```bash
+BASE_URL=http://localhost:3000 BROKER_PIN=4821 bash scripts/seed-demo-listings.sh
+```
+
+---
+
 ## Features
 
 ✨ **Core Features:**
@@ -91,22 +108,78 @@ cp .env.example .env.local
 
 ### `.env.local` Configuration
 
-```env
-# Required: Google Gemini API Key
-# Get it from: https://aistudio.google.com/app/apikeys
-GEMINI_API_KEY=your_actual_api_key_here
+`server.ts` loads `.env.local` first, then `.env` (dotenv). Nothing is mandatory to boot the
+site, but the following unlock the server-side features:
 
-# Required: App URL (for self-referential links, OAuth, webhooks)
-# Local: http://localhost:3000
-# Production: https://sri-varahi-amma-real-estate.vercel.app
+```env
+# App URL — canonical links, sitemap
 APP_URL=http://localhost:3000
+
+# Admin token — protects branding uploads (POST /api/deity-image) and the
+# enquiry inbox (GET /api/inquiries). Generate:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ADMIN_API_TOKEN=
+
+# Owner/broker desk login. Prefer the sha256 hash:
+#   printf %s 4821 | sha256sum
+BROKER_PIN_HASH=
+# (local development only — plain PIN)
+BROKER_PIN=
+
+# Signs buyer/owner session tokens (rotating on restart when unset)
+SESSION_SECRET=
+
+# Optional lead alerts — enquiries ALWAYS land in data/inquiries.jsonl; each
+# channel below additionally pings you. Configure any combination:
+#   TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID   (free, 5-minute setup — recommended)
+#   WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID + LEAD_WHATSAPP_TO
+#   RESEND_API_KEY + LEAD_NOTIFY_EMAIL      (email)
+#   LEAD_WEBHOOK_URL                        (Zapier / n8n / CRM)
+# See STEP-BY-STEP-PLAN.md Part 1 and .env.example.
+LEAD_WEBHOOK_URL=
+
+# Optional: AI features (not used by any screen yet)
+GEMINI_API_KEY=
 ```
 
 ### Security Notes ⚠️
 - **Never commit `.env.local`** - it's already in `.gitignore`
 - Only `.env.example` should be in version control
-- Use GitHub Secrets for CI/CD deployments
-- Rotate API keys regularly
+- Use GitHub Secrets / host environment variables for CI/CD deployments
+- Rotate the admin token, owner PIN and `SESSION_SECRET` regularly
+- Enquiries are written to `data/` (git-ignored) — treat that file as personal data
+- See [AUDIT-REPORT.md](./AUDIT-REPORT.md) for the full security review and hardening log
+
+---
+
+## What the site can do now (server-backed)
+
+| Screen | Endpoint | Who can use it |
+|---|---|---|
+| Enquiry / site-visit form | `POST /api/inquiries` | any visitor (rate-limited, validated) |
+| Owner Desk → Enquiries inbox | `GET /api/inquiries`, `PATCH /api/inquiries/:id` | owner session or admin token |
+| Publish / edit / delete a listing | `POST/PATCH/DELETE /api/properties` | owner session or admin token |
+| Property photo upload | `POST /api/uploads` → served at `/uploads/<file>` | owner session or admin token |
+| Public catalogue | `GET /api/properties` | everyone |
+| Logo / branding upload | `POST /api/deity-image` | admin token |
+| Buyer OTP login | `POST /api/auth/otp/request` \| `/verify` | any visitor |
+| Owner PIN login | `POST /api/auth/broker` | owner |
+
+Open the **Owner Desk** from the header after signing in with your owner PIN: it lists every
+enquiry with one-tap call/WhatsApp and every published listing with inline price editing.
+
+## Quality Gates
+
+```bash
+npm run typecheck   # tsc --noEmit (must be clean)
+npm run build       # Vite client + esbuild server bundle
+npm run smoke       # API smoke tests against a running server
+npm run verify      # all three, in order
+```
+
+`scripts/smoke-test.sh` accepts `BASE_URL`, `ADMIN_TOKEN` and `BROKER_PIN`
+(e.g. `ADMIN_TOKEN=… BROKER_PIN=4821 npm run smoke`) and exits non-zero on any failure,
+so it can gate a deployment.
 
 ---
 

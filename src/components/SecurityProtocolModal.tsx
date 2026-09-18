@@ -17,6 +17,7 @@ import {
   FileText
 } from 'lucide-react';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface SecurityProtocolModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -39,6 +40,8 @@ export const SecurityProtocolModal: React.FC<SecurityProtocolModalProps> = ({
     escrowStatus: string;
   } | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
 
   if (!isOpen) return null;
 
@@ -68,7 +71,11 @@ export const SecurityProtocolModal: React.FC<SecurityProtocolModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] flex flex-col font-sans">
         
         {/* Header */}

@@ -1,0 +1,17 @@
+{
+  "name": "Sri Varahi Amma Real Estate",
+  "short_name": "Varahi Estates",
+  "description": "Verified plots, clear Patta titles and luxury residences across India and global markets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FCFAF7",
+  "theme_color": "#171513",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

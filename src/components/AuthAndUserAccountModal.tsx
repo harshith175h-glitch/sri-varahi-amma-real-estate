@@ -9,10 +9,14 @@ import {
   Building2, 
   CheckCircle2,
   KeyRound,
-  Sparkles
+  Sparkles,
+  Inbox
 } from 'lucide-react';
 import { UserAccount } from '../types';
+import { requestOtp, verifyOtp, verifyBrokerPin, setSessionToken } from '../utils/api';
+import { readJSON, writeJSON } from '../utils/storage';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface AuthAndUserAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,6 +25,7 @@ interface AuthAndUserAccountModalProps {
   onOpenDocumentWallet?: () => void;
   onOpenDealTracker?: () => void;
   onAddPropertyShortcut?: () => void;
+  onOpenOwnerDesk?: () => void;
 }
 
 export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = ({
@@ -29,6 +34,7 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
   currentUser,
   onUpdateUser,
   onAddPropertyShortcut,
+  onOpenOwnerDesk,
 }) => {
   const [activeTab, setActiveTab] = useState<'buyer_signin' | 'broker_signin'>('buyer_signin');
   
@@ -40,73 +46,137 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
   // Phone OTP Flow for Customers
   const [showOtpScreen, setShowOtpScreen] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  /** Set only when the API returned a development code (never in production). */
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
+  /** True when the deployment has no API at all (static hosting). */
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
 
-  // Broker master PIN login
+  // Broker master PIN login (verified by the server, never in the bundle)
   const [brokerPin, setBrokerPin] = useState('');
   const [brokerPinError, setBrokerPinError] = useState(false);
 
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
-  // Step 1: Send OTP to customer's mobile
-  const handleRequestCustomerOtp = (e: React.FormEvent) => {
+  // Step 1: ask the server to send an OTP to the customer's mobile
+  const handleRequestCustomerOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!buyerName.trim() || !buyerPhone.trim()) return;
+    setAuthError(null);
 
-    // Generate a clean 4-digit code
-    const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedOtp(randomCode);
+    if (!buyerName.trim()) {
+      setAuthError('Please enter your name.');
+      return;
+    }
+    if (buyerPhone.replace(/[^0-9]/g, '').length < 10) {
+      setAuthError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const res = await requestOtp(buyerPhone.trim());
+    setIsSubmitting(false);
+    setDevOtpHint(null);
+
+    if (res.offline) {
+      // Static hosting without the API: allow a clearly-labelled local session
+      // so the UI remains usable, but never claim the number was verified.
+      setIsOfflineMode(true);
+      setShowOtpScreen(true);
+      return;
+    }
+
+    if (!res.ok) {
+      setAuthError(res.data?.error || 'Could not send the OTP right now. Please try again.');
+      return;
+    }
+
+    if (res.data?.devCode) setDevOtpHint(res.data.devCode);
+    setIsOfflineMode(false);
     setShowOtpScreen(true);
   };
 
-  // Step 2: Customer enters the OTP
-  const handleVerifyCustomerOtp = (e: React.FormEvent) => {
+  // Step 2: the server checks the OTP (no client-side bypass codes)
+  const handleVerifyCustomerOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Accept generated code or standard 7890/1234
-    if (otpCode === generatedOtp || otpCode === '7890' || otpCode === '1234' || otpCode.length === 4) {
-      const cleanPhone = buyerPhone.trim();
-      const updatedUser: UserAccount = {
-        id: `buyer-${Date.now()}`,
-        name: buyerName.trim(),
-        phone: cleanPhone,
-        email: buyerEmail.trim() || `${buyerName.toLowerCase().replace(/\s+/g, '')}@buyer.in`,
-        role: 'buyer',
-        isLoggedIn: true,
-        kycStatus: 'Verified',
-        preferredLanguage: 'English',
-        preferredServiceMode: 'offline_in_person',
-        walletBalanceINR: 0,
-        escrowLockedINR: 0,
-        memberSince: '2026',
-      };
+    setAuthError(null);
 
-      onUpdateUser(updatedUser);
-      setShowOtpScreen(false);
-      setOtpCode('');
-      onClose();
-
-      // Log lead into local registry
-      try {
-        const storedLeads = JSON.parse(localStorage.getItem('varahi_buyer_leads') || '[]');
-        storedLeads.push({
-          name: updatedUser.name,
-          phone: updatedUser.phone,
-          email: updatedUser.email,
-          timestamp: new Date().toLocaleString()
-        });
-        localStorage.setItem('varahi_buyer_leads', JSON.stringify(storedLeads));
-      } catch (err) {
-        // ignore
-      }
-    } else {
-      alert('Incorrect OTP. Please enter the 4-digit code shown.');
+    const code = otpCode.trim();
+    if (!/^[0-9]{4,6}$/.test(code)) {
+      setAuthError('Enter the 4-digit code you received by SMS.');
+      return;
     }
+
+    setIsSubmitting(true);
+    const res = isOfflineMode
+      ? { ok: true, status: 200, data: { token: 'offline-local-session' }, offline: true }
+      : await verifyOtp(buyerPhone.trim(), code);
+    setIsSubmitting(false);
+
+    if (!res.ok || !res.data?.token) {
+      setAuthError(res.data?.error || 'That code is incorrect or has expired. Please request a new one.');
+      return;
+    }
+
+    setSessionToken(res.data.token);
+
+    const cleanPhone = buyerPhone.trim();
+    const updatedUser: UserAccount = {
+      id: `buyer-${Date.now()}`,
+      name: buyerName.trim(),
+      phone: cleanPhone,
+      email: buyerEmail.trim(),
+      role: 'buyer',
+      isLoggedIn: true,
+      // A phone OTP proves the number, not identity documents. KYC stays
+      // "pending" until the Document Wallet review completes.
+      kycStatus: 'Pending',
+      preferredLanguage: 'English',
+      preferredServiceMode: 'offline_in_person',
+      walletBalanceINR: 0,
+      escrowLockedINR: 0,
+      memberSince: String(new Date().getFullYear()),
+    };
+
+    onUpdateUser(updatedUser);
+    setShowOtpScreen(false);
+    setOtpCode('');
+    onClose();
+
+    // Local backup of the lead in case the CRM hand-off failed earlier.
+    const storedLeads = readJSON<Array<Record<string, unknown>>>('inquiries', []);
+    writeJSON('inquiries', [
+      {
+        name: updatedUser.name,
+        phone: updatedUser.phone,
+        email: updatedUser.email,
+        type: 'buyer_signin',
+        timestamp: new Date().toISOString(),
+      },
+      ...storedLeads,
+    ].slice(0, 200));
   };
 
-  // Owner / Broker Master Login
-  const handleBrokerLogin = (e: React.FormEvent) => {
+  // Owner / Broker Master Login — the PIN is verified by the server against a
+  // hashed value (BROKER_PIN_HASH / BROKER_PIN env var). Hard-coded PINs used to
+  // ship inside this bundle, so anyone reading the JavaScript owned the desk.
+  const handleBrokerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (brokerPin === '2026' || brokerPin === '1234' || brokerPin === '6383') {
+    setAuthError(null);
+
+    if (!/^[0-9]{4,8}$/.test(brokerPin.trim())) {
+      setBrokerPinError(true);
+      return;
+    }
+
+    setIsSubmitting(true);
+    const res = await verifyBrokerPin(brokerPin.trim());
+    setIsSubmitting(false);
+
+    if (res.ok && res.data?.token) {
+      setSessionToken(res.data.token);
       const brokerUser: UserAccount = {
         id: 'owner-harshith-01',
         name: 'Harshith (Owner & Lead Realtor)',
@@ -128,9 +198,15 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
       if (onAddPropertyShortcut) {
         onAddPropertyShortcut();
       }
-    } else {
-      setBrokerPinError(true);
+      return;
     }
+
+    setBrokerPinError(true);
+    setAuthError(
+      res.offline
+        ? 'The owner desk requires the application server. This deployment is running as static files only.'
+        : res.data?.error || 'Incorrect security PIN. Please enter your authorised PIN.'
+    );
   };
 
   const handleSignOut = () => {
@@ -153,7 +229,11 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4 overflow-y-auto font-sans">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4 overflow-y-auto font-sans">
       <div className="bg-[#FCFAF7] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-[#E6E0D5] my-auto">
         
         {/* Header */}
@@ -207,6 +287,19 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
                 </span>
               </div>
             </div>
+
+            {currentUser.role === 'agent' && onOpenOwnerDesk && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenOwnerDesk();
+                }}
+                className="w-full py-3 rounded-2xl bg-[#FAF7F2] hover:bg-[#F3EFE8] border border-[#DCD6C8] text-[#171513] text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-2"
+              >
+                <Inbox className="w-4 h-4 text-[#8C7A65]" aria-hidden="true" />
+                <span>Owner Desk — Enquiries & Listings</span>
+              </button>
+            )}
 
             {currentUser.role === 'agent' && onAddPropertyShortcut && (
               <button
@@ -326,8 +419,8 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
                         type="submit"
                         className="w-full py-3 rounded-2xl bg-[#171513] hover:bg-black text-white text-xs font-bold uppercase tracking-wider transition shadow-md flex items-center justify-center gap-2"
                       >
-                        <KeyRound className="w-4 h-4 text-[#D4AF37]" />
-                        <span>Send 4-Digit OTP Code</span>
+                        <KeyRound className="w-4 h-4 text-[#D4AF37]" aria-hidden="true" />
+                        <span>{isSubmitting ? 'Sending…' : 'Send 4-Digit OTP Code'}</span>
                       </button>
                     </div>
                   </form>
@@ -339,9 +432,30 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
                       </div>
                       <h3 className="font-serif font-bold text-sm text-[#171513]">Enter 4-Digit Mobile OTP</h3>
                       <p className="text-xs text-[#736B63] leading-relaxed">
-                        A 4-digit verification code has been dispatched to your mobile number via SMS / WhatsApp: <strong className="text-[#171513]">{buyerPhone}</strong>
+                        {isOfflineMode
+                          ? 'This deployment has no messaging service connected, so no SMS could be sent.'
+                          : <>A 4-digit verification code has been sent to <strong className="text-[#171513]">{buyerPhone}</strong> via SMS / WhatsApp.</>}
                       </p>
                     </div>
+
+                    {isOfflineMode && (
+                      <div role="status" className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 leading-relaxed">
+                        <strong>Preview mode:</strong> no SMS provider or backend is configured, so any 4 digits will open a
+                        local-only session. Your number is <strong>not verified</strong>.
+                      </div>
+                    )}
+
+                    {devOtpHint && (
+                      <div role="status" className="p-3 rounded-xl bg-[#FAF7F2] border border-[#D4AF37]/50 text-[11px] text-[#5C4A1E] text-center">
+                        Development code: <strong className="font-mono tracking-widest">{devOtpHint}</strong>
+                      </div>
+                    )}
+
+                    {authError && (
+                      <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-700">
+                        {authError}
+                      </div>
+                    )}
 
                     <div>
                       <input
@@ -366,9 +480,11 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
                       </button>
                       <button
                         type="submit"
-                        className="flex-2 py-2.5 rounded-xl bg-[#171513] hover:bg-black text-white text-xs font-bold uppercase tracking-wider shadow-xs"
+                        disabled={isSubmitting}
+                        aria-busy={isSubmitting}
+                        className="flex-2 py-2.5 rounded-xl bg-[#171513] hover:bg-black disabled:opacity-60 text-white text-xs font-bold uppercase tracking-wider shadow-xs"
                       >
-                        Verify OTP
+                        {isSubmitting ? 'Verifying…' : 'Verify OTP'}
                       </button>
                     </div>
                   </form>
@@ -401,9 +517,9 @@ export const AuthAndUserAccountModal: React.FC<AuthAndUserAccountModalProps> = (
                       autoFocus
                     />
                   </div>
-                  {brokerPinError && (
-                    <p className="text-[11px] text-rose-600 mt-1 font-medium text-center">
-                      Incorrect security PIN. Please enter your authorized PIN.
+                  {(brokerPinError || authError) && (
+                    <p role="alert" className="text-[11px] text-rose-600 mt-1 font-medium text-center">
+                      {authError || 'Incorrect security PIN. Please enter your authorised PIN.'}
                     </p>
                   )}
                 </div>

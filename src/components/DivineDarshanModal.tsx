@@ -12,6 +12,8 @@ import { DivineArtworkGraphic } from './DivineArtworkGraphic';
 import { getDeityImage } from '../utils/imageStorage';
 import { DEFAULT_DEITY_PHOTO_URL } from '../data/deityAsset';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
+import { readString } from '../utils/storage';
 interface DivineDarshanModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,7 +28,7 @@ export const DivineDarshanModal: React.FC<DivineDarshanModalProps> = ({
   customDeityImageUrl,
 }) => {
   const [imgSrc, setImgSrc] = useState<string>(() => {
-    return customDeityImageUrl || localStorage.getItem('varahi_custom_deity_art') || DEFAULT_DEITY_PHOTO_URL || '';
+    return customDeityImageUrl || readString('deityArt', '') || DEFAULT_DEITY_PHOTO_URL;
   });
   const [hasError, setHasError] = useState(false);
 
@@ -64,10 +66,16 @@ export const DivineDarshanModal: React.FC<DivineDarshanModalProps> = ({
     setHasError(true);
   };
 
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-6 overflow-y-auto font-sans animate-in fade-in duration-300">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-6 overflow-y-auto font-sans animate-in fade-in duration-300">
       <div className="bg-gradient-to-b from-[#1E1914] via-[#15120F] to-[#0D0B09] text-[#F5F2EB] rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl border-2 border-[#D4AF37]/60 my-auto relative">
         
         {/* Top Gold Arch Accent */}

@@ -31,7 +31,7 @@ export const AuspiciousMuhurthamBanner: React.FC<AuspiciousMuhurthamBannerProps>
     const message = encodeURIComponent(
       `Namaste, I am on the Sri Varahi Amma Real Estate portal. I would like to consult with you for fixing an Auspicious Muhurtham / Registration timing for a land parcel. Today's date: ${panchangam.dateString}. Please advise on the best Subha Horai.`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank', 'noopener,noreferrer');
   };
 
   return (

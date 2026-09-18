@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getTodayPanchangam, getUpcomingAuspiciousDates, AuspiciousDateItem } from '../utils/panchangam';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface MuhurthamDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -31,6 +32,8 @@ export const MuhurthamDetailsModal: React.FC<MuhurthamDetailsModalProps> = ({
   const panchangam = getTodayPanchangam();
   const upcomingDates = getUpcomingAuspiciousDates();
 
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   const handleWhatsAppConsult = (subject: string) => {
@@ -38,11 +41,15 @@ export const MuhurthamDetailsModal: React.FC<MuhurthamDetailsModalProps> = ({
     const message = encodeURIComponent(
       `Namaste, I am reviewing the Auspicious Muhurtham section on Sri Varahi Amma Real Estate. I would like to consult with you about: "${subject}". Please advise on the best timing.`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank', 'noopener,noreferrer');
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
       
       {/* Modal Container */}
       <div className="bg-[#181512] text-[#F5F2EB] rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl border-2 border-[#D4AF37]/50 my-auto relative flex flex-col max-h-[90vh]">

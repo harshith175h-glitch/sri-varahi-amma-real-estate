@@ -11,30 +11,48 @@ import {
   CheckCircle2, 
   Sparkles,
   ShieldCheck,
-  Languages
+  Languages,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { CurrencyCode, InquirySubmission, Property, CommunicationProfile } from '../types';
+import { CurrencyCode, InquirySubmission, InquirySubmitResult, Property, CommunicationProfile } from '../types';
 import { formatPrice } from '../utils/currency';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface ContactAgentModalProps {
   property: Property | null;
   onClose: () => void;
   currency: CurrencyCode;
-  onSubmitInquiry: (inquiry: InquirySubmission) => void;
+  onSubmitInquiry: (inquiry: InquirySubmission) => Promise<InquirySubmitResult>;
   communicationProfile: CommunicationProfile;
 }
 
 type MsgLang = 'English' | 'Tamil' | 'Telugu' | 'Kannada' | 'Hindi';
 
-export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
+export const ContactAgentModal: React.FC<ContactAgentModalProps> = (props) => {
+  // Hooks may never run conditionally. The previous implementation returned
+  // `null` before calling its useState hooks, so the first time a visitor
+  // opened this dialog React saw a different hook count on the same component
+  // instance and threw "Rendered more hooks than during the previous render",
+  // blanking the whole app. Render the dialog only once a property exists and
+  // let the inner component own all hooks.
+  if (!props.property) return null;
+  return <ContactAgentModalInner {...props} property={props.property} />;
+};
+
+interface ContactAgentModalInnerProps extends Omit<ContactAgentModalProps, 'property'> {
+  property: Property;
+}
+
+const ContactAgentModalInner: React.FC<ContactAgentModalInnerProps> = ({
   property,
   onClose,
   currency,
   onSubmitInquiry,
   communicationProfile,
 }) => {
-  if (!property) return null;
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen: true, onClose });
 
   const [tourType, setTourType] = useState<'in-person' | 'video' | 'phone' | 'message'>('in-person');
   const [userName, setUserName] = useState(communicationProfile.name || '');
@@ -64,6 +82,9 @@ export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
 
   const [message, setMessage] = useState(getTemplateMessage(selectedMsgLang));
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitResult, setSubmitResult] = useState<InquirySubmitResult | null>(null);
 
   useEffect(() => {
     setMessage(getTemplateMessage(selectedMsgLang));
@@ -74,12 +95,24 @@ export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
     communicationProfile.spokenLanguages.includes(l)
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName || !userPhone) {
-      alert('Please fill in your name and phone number.');
+
+    const phoneDigits = userPhone.replace(/[^0-9]/g, '');
+    if (!userName.trim()) {
+      setFormError('Please enter your name so the advisor knows who to call.');
       return;
     }
+    if (phoneDigits.length < 10) {
+      setFormError('Please enter a valid 10-digit mobile number (with country code for NRI buyers).');
+      return;
+    }
+    if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+      setFormError('That email address does not look right — please check it or leave it blank.');
+      return;
+    }
+    setFormError(null);
+    setIsSubmitting(true);
 
     const newInquiry: InquirySubmission = {
       id: `inq-${Date.now()}`,
@@ -100,17 +133,28 @@ export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    onSubmitInquiry(newInquiry);
+    let result: InquirySubmitResult;
+    try {
+      result = await onSubmitInquiry(newInquiry);
+    } catch {
+      result = {
+        ok: false,
+        mode: 'local',
+        message:
+          'We could not reach the server. Your enquiry is saved in this browser — please send it on WhatsApp or call the broker desk directly.',
+      };
+    }
+
+    setSubmitResult(result);
+    setIsSubmitting(false);
     setIsSubmitted(true);
 
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-      });
-    } catch {
-      // ignore
+    if (result.ok) {
+      try {
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+      } catch {
+        // confetti is decorative only
+      }
     }
   };
 
@@ -125,7 +169,11 @@ export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-sans">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-sans">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] p-6 sm:p-8 space-y-6">
         
         {/* Close Button */}
@@ -367,14 +415,31 @@ export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
                 </div>
               </div>
 
+              {/* Inline validation error (replaces the old alert() call) */}
+              {formError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-sans"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
               {/* Submit CTA */}
               <button
                 type="submit"
                 id="btn-submit-agent-inquiry"
-                className="w-full py-3.5 rounded-full bg-[#1A1A1A] hover:bg-[#333333] text-white font-sans font-bold uppercase tracking-widest text-xs shadow-md transition flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                aria-busy={isSubmitting}
+                className="w-full py-3.5 rounded-full bg-[#1A1A1A] hover:bg-[#333333] disabled:opacity-60 disabled:cursor-not-allowed text-white font-sans font-bold uppercase tracking-widest text-xs shadow-md transition flex items-center justify-center gap-2"
               >
-                <Sparkles className="w-4 h-4 text-[#C4A484]" />
-                <span>Submit Inquiry to {property.agent.name}</span>
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 text-[#C4A484] animate-spin" aria-hidden="true" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-[#C4A484]" aria-hidden="true" />
+                )}
+                <span>{isSubmitting ? 'Sending your request…' : `Submit Inquiry to ${property.agent.name}`}</span>
               </button>
 
             </form>
@@ -387,9 +452,24 @@ export const ContactAgentModal: React.FC<ContactAgentModalProps> = ({
             </div>
             
             <div className="space-y-1.5">
-              <h3 className="text-2xl font-serif font-bold text-[#1A1A1A]">Inquiry Successfully Dispatched</h3>
+              <h3 className="text-2xl font-serif font-bold text-[#1A1A1A]">
+                {submitResult?.ok ? 'Inquiry Successfully Dispatched' : 'Enquiry Saved — Please Confirm On WhatsApp'}
+              </h3>
               <p className="text-sm font-sans text-[#736B63] max-w-md mx-auto">
-                Thank you <strong className="text-[#1A1A1A]">{userName}</strong>. {property.agent.name} from {property.agent.agency} has received your dossier request regarding <strong className="text-[#1A1A1A]">{property.title}</strong>.
+                Thank you <strong className="text-[#1A1A1A]">{userName}</strong>.{' '}
+                {submitResult?.ok
+                  ? `${property.agent.name} from ${property.agent.agency} has received your request regarding `
+                  : `We could not reach the server, so your request regarding `}
+                <strong className="text-[#1A1A1A]">{property.title}</strong>
+                {submitResult?.ok ? '.' : ' is saved in this browser only.'}
+              </p>
+              <p
+                className={`text-xs font-sans max-w-md mx-auto ${
+                  submitResult?.ok ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+              >
+                {submitResult?.message}
+                {submitResult?.reference ? ` Reference: ${submitResult.reference}` : ''}
               </p>
             </div>
 

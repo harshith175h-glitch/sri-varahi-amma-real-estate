@@ -220,3 +220,11 @@ export interface InquirySubmission {
   message: string;
   createdAt: string;
 }
+
+/** Result returned by the app when a tour/enquiry submission is attempted. */
+export interface InquirySubmitResult {
+  ok: boolean;
+  mode: 'server' | 'local';
+  message: string;
+  reference?: string;
+}

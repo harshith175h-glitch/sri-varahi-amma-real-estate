@@ -17,6 +17,7 @@ import {
   Compass
 } from 'lucide-react';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface PlatformGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -394,13 +395,19 @@ export const PlatformGuideModal: React.FC<PlatformGuideModalProps> = ({
   onOpenAgents,
   onOpenProfile,
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   const [activeLang, setActiveLang] = useState<GuideLanguage>('en');
   const t = TRANSLATIONS[activeLang];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-sans">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-sans">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] p-6 sm:p-8 space-y-6">
         
         {/* Header */}

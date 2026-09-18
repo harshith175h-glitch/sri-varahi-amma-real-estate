@@ -35,37 +35,51 @@ import {
   PropertyType, 
   ListingType,
   CommunicationProfile,
-  UserAccount
+  UserAccount,
+  InquirySubmitResult
 } from './types';
 import { INITIAL_PROPERTIES } from './data/mockProperties';
 import { Header } from './components/Header';
 import { HeroSearch } from './components/HeroSearch';
 import { FilterBar } from './components/FilterBar';
 import { PropertyCard } from './components/PropertyCard';
-import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { ContactAgentModal } from './components/ContactAgentModal';
-import { AddPropertyModal } from './components/AddPropertyModal';
-import { MortgageCalculatorModal } from './components/MortgageCalculatorModal';
-import { ComparisonModal } from './components/ComparisonModal';
-import { AgentDirectoryModal } from './components/AgentDirectoryModal';
-import { FavoritesDrawer } from './components/FavoritesDrawer';
-import { CommunicationProfileModal } from './components/CommunicationProfileModal';
-import { PlatformGuideModal } from './components/PlatformGuideModal';
-import { AuthAndUserAccountModal } from './components/AuthAndUserAccountModal';
-import { DocumentWalletModal } from './components/DocumentWalletModal';
-import { DealEscrowTrackerModal } from './components/DealEscrowTrackerModal';
 import { SecurityBanner } from './components/SecurityBanner';
-import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
-import { BrokerContactSettingsModal, BrokerContactConfig, DEFAULT_BROKER_CONFIG } from './components/BrokerContactSettingsModal';
-import { SecurityProtocolModal } from './components/SecurityProtocolModal';
+import { BrokerContactConfig, DEFAULT_BROKER_CONFIG } from './data/brokerDefaults';
+import { lazyModal } from './utils/lazyModal';
 import { DivineEntranceBanner } from './components/DivineEntranceBanner';
-import { DivineDarshanModal } from './components/DivineDarshanModal';
 import { AuspiciousMuhurthamBanner } from './components/AuspiciousMuhurthamBanner';
-import { MuhurthamDetailsModal } from './components/MuhurthamDetailsModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { getDeityImage, saveDeityImage } from './utils/imageStorage';
+import { getDeityImage } from './utils/imageStorage';
 import { DEFAULT_DEITY_PHOTO_URL } from './data/deityAsset';
+import { readJSON, readString, writeJSON, writeString } from './utils/storage';
+import {
+  submitInquiry,
+  fetchProperties,
+  createProperty,
+  updateProperty,
+  uploadImage,
+} from './utils/api';
+import { CompareBar } from './components/CompareBar';
 
+// Heavy, on-demand dialogs are code-split (see utils/lazyModal.tsx).
+const PropertyDetailModal = lazyModal(() => import('./components/PropertyDetailModal'), 'PropertyDetailModal');
+const AddPropertyModal = lazyModal(() => import('./components/AddPropertyModal'), 'AddPropertyModal');
+const MortgageCalculatorModal = lazyModal(() => import('./components/MortgageCalculatorModal'), 'MortgageCalculatorModal');
+const ComparisonModal = lazyModal(() => import('./components/ComparisonModal'), 'ComparisonModal');
+const AgentDirectoryModal = lazyModal(() => import('./components/AgentDirectoryModal'), 'AgentDirectoryModal');
+const FavoritesDrawer = lazyModal(() => import('./components/FavoritesDrawer'), 'FavoritesDrawer');
+const CommunicationProfileModal = lazyModal(() => import('./components/CommunicationProfileModal'), 'CommunicationProfileModal');
+const PlatformGuideModal = lazyModal(() => import('./components/PlatformGuideModal'), 'PlatformGuideModal');
+const AuthAndUserAccountModal = lazyModal(() => import('./components/AuthAndUserAccountModal'), 'AuthAndUserAccountModal');
+const DocumentWalletModal = lazyModal(() => import('./components/DocumentWalletModal'), 'DocumentWalletModal');
+const DealEscrowTrackerModal = lazyModal(() => import('./components/DealEscrowTrackerModal'), 'DealEscrowTrackerModal');
+const PrivacyPolicyModal = lazyModal(() => import('./components/PrivacyPolicyModal'), 'PrivacyPolicyModal');
+const BrokerContactSettingsModal = lazyModal(() => import('./components/BrokerContactSettingsModal'), 'BrokerContactSettingsModal');
+const SecurityProtocolModal = lazyModal(() => import('./components/SecurityProtocolModal'), 'SecurityProtocolModal');
+const DivineDarshanModal = lazyModal(() => import('./components/DivineDarshanModal'), 'DivineDarshanModal');
+const MuhurthamDetailsModal = lazyModal(() => import('./components/MuhurthamDetailsModal'), 'MuhurthamDetailsModal');
+const OwnerDeskModal = lazyModal(() => import('./components/OwnerDeskModal'), 'OwnerDeskModal');
 const DEFAULT_FILTERS: FilterState = {
   query: '',
   region: 'all',
@@ -116,56 +130,31 @@ const DEFAULT_USER_ACCOUNT: UserAccount = {
 export default function App() {
   // --- Persistent State ---
   const [properties, setProperties] = useState<Property[]>(() => {
-    const saved = localStorage.getItem('terra_properties_v1');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch {
-        // fallback
-      }
-    }
-    return INITIAL_PROPERTIES;
+    const saved = readJSON<Property[]>('properties', []);
+    return Array.isArray(saved) && saved.length > 0 ? saved : INITIAL_PROPERTIES;
   });
 
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    const saved = localStorage.getItem('terra_favorites_v1');
-    return saved ? JSON.parse(saved) : ['prop-in-1', 'prop-int-1'];
-  });
+  // NOTE: the shortlist intentionally starts empty. The previous build seeded
+  // two fake favourites on every new browser, which made the counter lie.
+  const [favorites, setFavorites] = useState<string[]>(() =>
+    readJSON<string[]>('favorites', [])
+  );
 
-  const [comparedIds, setComparedIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('terra_compare_v1');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [comparedIds, setComparedIds] = useState<string[]>(() =>
+    readJSON<string[]>('compare', [])
+  );
 
-  const [currency, setCurrency] = useState<CurrencyCode>(() => {
-    const saved = localStorage.getItem('terra_currency_v1');
-    return (saved as CurrencyCode) || 'INR';
-  });
+  const [currency, setCurrency] = useState<CurrencyCode>(
+    () => (readString('currency', 'INR') as CurrencyCode) || 'INR'
+  );
 
-  const [communicationProfile, setCommunicationProfile] = useState<CommunicationProfile>(() => {
-    const saved = localStorage.getItem('varahi_comm_profile_v2');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // fallback
-      }
-    }
-    return DEFAULT_COMMUNICATION_PROFILE;
-  });
+  const [communicationProfile, setCommunicationProfile] = useState<CommunicationProfile>(() =>
+    readJSON<CommunicationProfile>('commProfile', DEFAULT_COMMUNICATION_PROFILE)
+  );
 
-  const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
-    const saved = localStorage.getItem('varahi_user_account_v2');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // fallback
-      }
-    }
-    return DEFAULT_USER_ACCOUNT;
-  });
+  const [currentUser, setCurrentUser] = useState<UserAccount>(() =>
+    readJSON<UserAccount>('userAccount', DEFAULT_USER_ACCOUNT)
+  );
 
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
@@ -189,35 +178,57 @@ export default function App() {
   const [isSecurityProtocolOpen, setIsSecurityProtocolOpen] = useState(false);
   const [isDarshanOpen, setIsDarshanOpen] = useState(false);
   const [isMuhurthamOpen, setIsMuhurthamOpen] = useState(false);
+  const [isOwnerDeskOpen, setIsOwnerDeskOpen] = useState(false);
+  /** Ids of listings that live on the server (editable/deletable from the owner desk). */
+  const [serverPropertyIds, setServerPropertyIds] = useState<string[]>([]);
 
   // --- Broker Contact & Business Settings State ---
   const [brokerConfig, setBrokerConfig] = useState<BrokerContactConfig>(() => {
-    const saved = localStorage.getItem('terra_broker_config_v1');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return {
-          ...DEFAULT_BROKER_CONFIG,
-          ...parsed,
-          deityImageUrl: parsed.deityImageUrl || undefined
-        };
-      } catch {
-        // fallback
-      }
-    }
-    return DEFAULT_BROKER_CONFIG;
+    const parsed = readJSON<Partial<BrokerContactConfig>>('brokerConfig', {});
+    return {
+      ...DEFAULT_BROKER_CONFIG,
+      ...parsed,
+      deityImageUrl: parsed?.deityImageUrl || undefined,
+    };
   });
+
+  // Load listings published from the owner desk. These are stored on the server
+  // (data/properties.json) and shown to every visitor; the bundled demo
+  // catalogue is only merged in behind them.
+  useEffect(() => {
+    let isMounted = true;
+    fetchProperties()
+      .then((res) => {
+        if (!isMounted || !res.ok || !res.data?.properties) return;
+        const incoming = res.data.properties as unknown as Property[];
+        if (incoming.length === 0) return;
+        setServerPropertyIds(incoming.map((p) => p.id));
+        setProperties((prev) => {
+          const byId = new Map<string, Property>();
+          for (const property of [...incoming, ...prev]) {
+            if (!byId.has(property.id)) byId.set(property.id, property);
+          }
+          return Array.from(byId.values());
+        });
+      })
+      .catch(() => {
+        /* offline or static hosting: keep the bundled + local listings */
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Load persistent deity image from IndexedDB on startup
   useEffect(() => {
     let isMounted = true;
-    console.log('[App.tsx] useEffect: Initializing deity image retrieval from IndexedDB/Storage...');
+
     getDeityImage().then((img) => {
-      console.log('[App.tsx] getDeityImage resolved with:', img ? `Image string (length ${img.length})` : 'null');
+
       if (isMounted && img) {
         setBrokerConfig((prev) => {
           if (prev.deityImageUrl === img) return prev;
-          console.log('[App.tsx] Updating brokerConfig with loaded deityImageUrl');
+
           return { ...prev, deityImageUrl: img };
         });
       }
@@ -227,13 +238,13 @@ export default function App() {
 
     const handleDeityUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<string | null>;
-      console.log('[App.tsx] Received deity-image-updated event. Detail is:', customEvent.detail ? `Image (length ${customEvent.detail.length})` : customEvent.detail);
+
       if (customEvent.detail !== undefined) {
         setBrokerConfig((prev) => ({ ...prev, deityImageUrl: customEvent.detail || undefined }));
       } else {
         getDeityImage().then((img) => {
           if (isMounted) {
-            console.log('[App.tsx] Fetched fallback image on empty detail event:', img ? 'found' : 'none');
+
             setBrokerConfig((prev) => (prev.deityImageUrl === (img || undefined) ? prev : { ...prev, deityImageUrl: img || undefined }));
           }
         }).catch((err) => {
@@ -256,7 +267,7 @@ export default function App() {
       if (configToStore.deityImageUrl && configToStore.deityImageUrl.startsWith('data:')) {
         configToStore.deityImageUrl = undefined; // saved in IndexedDB separately
       }
-      localStorage.setItem('terra_broker_config_v1', JSON.stringify(configToStore));
+      writeJSON('brokerConfig', configToStore);
     } catch (e) {
       console.warn('Storage warning for broker config:', e);
     }
@@ -280,7 +291,7 @@ export default function App() {
   // Sync user account to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('varahi_user_account_v2', JSON.stringify(currentUser));
+      writeJSON('userAccount', currentUser);
     } catch {
       // safe
     }
@@ -289,7 +300,7 @@ export default function App() {
   // Sync properties to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('varahi_properties_v2', JSON.stringify(properties));
+      writeJSON('properties', properties);
     } catch {
       // safe
     }
@@ -298,7 +309,7 @@ export default function App() {
   // Sync favorites
   useEffect(() => {
     try {
-      localStorage.setItem('varahi_favorites_v2', JSON.stringify(favorites));
+      writeJSON('favorites', favorites);
     } catch {
       // safe
     }
@@ -307,7 +318,7 @@ export default function App() {
   // Sync compare
   useEffect(() => {
     try {
-      localStorage.setItem('varahi_compare_v2', JSON.stringify(comparedIds));
+      writeJSON('compare', comparedIds);
     } catch {
       // safe
     }
@@ -316,7 +327,7 @@ export default function App() {
   // Sync currency
   useEffect(() => {
     try {
-      localStorage.setItem('varahi_currency_v2', currency);
+      writeString('currency', currency);
     } catch {
       // safe
     }
@@ -325,7 +336,7 @@ export default function App() {
   // Sync communication profile
   useEffect(() => {
     try {
-      localStorage.setItem('varahi_comm_profile_v2', JSON.stringify(communicationProfile));
+      writeJSON('commProfile', communicationProfile);
     } catch {
       // safe
     }
@@ -373,25 +384,71 @@ export default function App() {
   };
 
   // --- Add Property (Custom Price set by user) ---
-  const handleAddProperty = (newProp: Property) => {
-    setProperties((prev) => [newProp, ...prev]);
-    addToast(
-      'success',
-      'Property Published!',
-      `"${newProp.title}" listed in ${newProp.city} with your custom price.`
-    );
+  // Device photos are uploaded first, then the listing is persisted server-side
+  // so it is visible to every visitor. If the server is unreachable the listing
+  // is still added locally, but the owner is told it is device-only.
+  const handleAddProperty = async (newProp: Property) => {
+    let prepared: Property = newProp;
+
+    if (newProp.images?.some((src) => src.startsWith('data:'))) {
+      const uploadedImages: string[] = [];
+      for (const src of newProp.images) {
+        if (!src.startsWith('data:')) {
+          uploadedImages.push(src);
+          continue;
+        }
+        const upload = await uploadImage(src);
+        uploadedImages.push(upload.ok && upload.data?.url ? upload.data.url : src);
+      }
+      prepared = { ...newProp, images: uploadedImages };
+    }
+
+    const saved = await createProperty(prepared as unknown as Record<string, unknown>);
+
+    if (saved.ok && saved.data?.property) {
+      const stored = saved.data.property as unknown as Property;
+      setProperties((prev) => [stored, ...prev.filter((p) => p.id !== stored.id)]);
+      setServerPropertyIds((prev) => [stored.id, ...prev]);
+      addToast(
+        'success',
+        'Property Published!',
+        `"${stored.title}" in ${stored.city} is now live for every visitor.`
+      );
+    } else {
+      setProperties((prev) => [prepared, ...prev]);
+      addToast(
+        'info',
+        'Saved On This Device',
+        saved.data?.error ||
+          'The server could not be reached, so this listing is visible only in this browser. Publish again once you are online.'
+      );
+    }
+
     // Switch filter region to match added property
-    setFilters((prev) => ({ ...prev, region: newProp.region, city: '' }));
+    setFilters((prev) => ({ ...prev, region: prepared.region, city: '' }));
   };
 
   // --- Update Property Price (Set price on any existing listing) ---
-  const handleUpdatePropertyPrice = (propertyId: string, newPriceINR: number) => {
+  const handleUpdatePropertyPrice = async (propertyId: string, newPriceINR: number) => {
     setProperties((prev) =>
       prev.map((p) => (p.id === propertyId ? { ...p, priceINR: newPriceINR } : p))
     );
     if (selectedProperty && selectedProperty.id === propertyId) {
       setSelectedProperty((prev) => (prev ? { ...prev, priceINR: newPriceINR } : null));
     }
+
+    if (serverPropertyIds.includes(propertyId)) {
+      const res = await updateProperty(propertyId, { priceINR: newPriceINR });
+      if (!res.ok) {
+        addToast(
+          'info',
+          'Price Changed Locally',
+          res.data?.error || 'The server did not accept the new price — please retry from the Owner Desk.'
+        );
+        return;
+      }
+    }
+
     addToast('success', 'Price Updated', 'Asking price updated successfully for this listing.');
   };
 
@@ -406,11 +463,41 @@ export default function App() {
   };
 
   // --- Submit Inquiry ---
-  const handleSubmitInquiry = (inquiry: InquirySubmission) => {
-    // Store inquiries in localStorage
-    const existingInquiries = JSON.parse(localStorage.getItem('terra_inquiries_v1') || '[]');
-    localStorage.setItem('terra_inquiries_v1', JSON.stringify([inquiry, ...existingInquiries]));
-    addToast('success', 'Inquiry Dispatched', `Your tour request has been sent to ${inquiry.agentName}.`);
+  // Sends the lead to the backend (persisted + forwarded to the broker desk).
+  // A local copy is always kept so nothing is lost if the server is offline,
+  // and the user is told the truth about which channel actually delivered it.
+  const handleSubmitInquiry = async (inquiry: InquirySubmission): Promise<InquirySubmitResult> => {
+    const existingInquiries = readJSON<InquirySubmission[]>('inquiries', []);
+    writeJSON('inquiries', [inquiry, ...existingInquiries].slice(0, 200));
+
+    const result = await submitInquiry(inquiry);
+
+    if (result.ok) {
+      const reference = result.data?.id || inquiry.id;
+      addToast(
+        'success',
+        'Enquiry Received',
+        `${inquiry.agentName} will contact you on ${inquiry.userPhone}. Reference: ${reference}`
+      );
+      return {
+        ok: true,
+        mode: 'server',
+        reference,
+        message: 'Your site-visit request has reached the broker desk. You will get a call or WhatsApp message shortly.',
+      };
+    }
+
+    addToast(
+      'info',
+      'Saved On This Device',
+      'The server could not be reached, so your enquiry was saved locally. Please send it via WhatsApp or call us.'
+    );
+    return {
+      ok: false,
+      mode: 'local',
+      message:
+        'We could not reach the server. Your enquiry is saved in this browser — please send it with the WhatsApp button or call us directly so it is not missed.',
+    };
   };
 
   // --- Open Mortgage with initial price ---
@@ -542,6 +629,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#FCFAF7] text-[#1A1A1A] flex flex-col font-sans antialiased selection:bg-[#C4A484]/30 selection:text-[#1A1A1A]">
       
+      {/* Keyboard skip link (accessibility) */}
+      <a
+        href="#listings-catalog"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-white focus:text-[#1A1A1A] focus:shadow-lg focus:text-xs focus:font-bold"
+      >
+        Skip to property listings
+      </a>
+
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
@@ -556,6 +651,13 @@ export default function App() {
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onOpenDarshan={() => setIsDarshanOpen(true)}
         customLogoUrl={brokerConfig.deityImageUrl}
+        isOwner={currentUser.isLoggedIn && currentUser.role === 'agent'}
+        onOpenOwnerDesk={() => setIsOwnerDeskOpen(true)}
+        currency={currency}
+        onCurrencyChange={(next) => {
+          setCurrency(next);
+          addToast('info', 'Currency Updated', `Prices are now shown in ${next}.`);
+        }}
       />
 
       {/* Auspicious Daily Subha Horai & Panchangam Banner */}
@@ -592,6 +694,13 @@ export default function App() {
         totalMatches={filteredProperties.length}
         isOpenModal={isFilterModalOpen}
         onCloseModal={() => setIsFilterModalOpen(false)}
+      />
+
+      {/* Trust, Security & Verification Strip */}
+      <SecurityBanner
+        onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)}
+        onOpenSecurityProtocol={() => setIsSecurityProtocolOpen(true)}
+        onOpenBrokerSettings={() => setIsBrokerSettingsOpen(true)}
       />
 
       {/* Main Property Listings Grid */}
@@ -942,77 +1051,115 @@ export default function App() {
         </div>
       </footer>
 
+      {/* Sticky Compare Tray */}
+      <CompareBar
+        comparedProperties={comparedProperties.map((p) => ({ id: p.id, title: p.title, city: p.city }))}
+        onOpenCompare={() => setIsCompareOpen(true)}
+        onRemove={toggleCompare}
+        onClearAll={() => {
+          setComparedIds([]);
+          addToast('info', 'Comparison Cleared', 'All properties were removed from the comparison tray.');
+        }}
+      />
+
       {/* --- ALL INTERACTIVE MODALS --- */}
 
       {/* Privacy Policy & Data Protection Modal */}
-      <PrivacyPolicyModal
-        isOpen={isPrivacyPolicyOpen}
-        onClose={() => setIsPrivacyPolicyOpen(false)}
-      />
+      {isPrivacyPolicyOpen && (
+        <PrivacyPolicyModal
+          isOpen={isPrivacyPolicyOpen}
+          onClose={() => setIsPrivacyPolicyOpen(false)}
+        />
+      )}
 
       {/* Broker Contact & Business Settings Modal */}
-      <BrokerContactSettingsModal
-        isOpen={isBrokerSettingsOpen}
-        onClose={() => setIsBrokerSettingsOpen(false)}
-        config={brokerConfig}
-        onSaveConfig={(newCfg) => {
-          setBrokerConfig(newCfg);
-          addToast('success', 'Broker Details Saved', 'Business contact, phone, and office details updated.');
-        }}
-      />
+      {isOwnerDeskOpen && (
+        <OwnerDeskModal
+          isOpen={isOwnerDeskOpen}
+          onClose={() => setIsOwnerDeskOpen(false)}
+          onAddProperty={() => setIsAddPropertyOpen(true)}
+          onSelectPropertyId={(id) => {
+            const match = properties.find((p) => p.id === id);
+            if (match) {
+              setIsOwnerDeskOpen(false);
+              setSelectedProperty(match);
+            }
+          }}
+        />
+      )}
+
+      {isBrokerSettingsOpen && (
+        <BrokerContactSettingsModal
+          isOpen={isBrokerSettingsOpen}
+          onClose={() => setIsBrokerSettingsOpen(false)}
+          config={brokerConfig}
+          onSaveConfig={(newCfg) => {
+            setBrokerConfig(newCfg);
+            addToast('success', 'Broker Details Saved', 'Business contact, phone, and office details updated.');
+          }}
+        />
+      )}
 
       {/* Security & Title Protocol Modal */}
-      <SecurityProtocolModal
-        isOpen={isSecurityProtocolOpen}
-        onClose={() => setIsSecurityProtocolOpen(false)}
-        onOpenAddProperty={() => {
-          setIsSecurityProtocolOpen(false);
-          setIsAddPropertyOpen(true);
-        }}
-      />
+      {isSecurityProtocolOpen && (
+        <SecurityProtocolModal
+          isOpen={isSecurityProtocolOpen}
+          onClose={() => setIsSecurityProtocolOpen(false)}
+          onOpenAddProperty={() => {
+            setIsSecurityProtocolOpen(false);
+            setIsAddPropertyOpen(true);
+          }}
+        />
+      )}
 
       {/* Communication Profile Modal */}
-      <CommunicationProfileModal
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-        profile={communicationProfile}
-        onSaveProfile={handleSaveProfile}
-      />
+      {isProfileOpen && (
+        <CommunicationProfileModal
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          profile={communicationProfile}
+          onSaveProfile={handleSaveProfile}
+        />
+      )}
 
       {/* Platform Guide Modal */}
-      <PlatformGuideModal
-        isOpen={isGuideOpen}
-        onClose={() => setIsGuideOpen(false)}
-        onOpenListProperty={() => setIsAddPropertyOpen(true)}
-        onOpenMortgage={() => handleOpenMortgageWithPrice(undefined)}
-        onOpenAgents={() => setIsAgentsOpen(true)}
-        onOpenProfile={() => setIsProfileOpen(true)}
-      />
+      {isGuideOpen && (
+        <PlatformGuideModal
+          isOpen={isGuideOpen}
+          onClose={() => setIsGuideOpen(false)}
+          onOpenListProperty={() => setIsAddPropertyOpen(true)}
+          onOpenMortgage={() => handleOpenMortgageWithPrice(undefined)}
+          onOpenAgents={() => setIsAgentsOpen(true)}
+          onOpenProfile={() => setIsProfileOpen(true)}
+        />
+      )}
 
       {/* Property Detail Modal */}
-      <PropertyDetailModal
-        property={selectedProperty}
-        onClose={() => setSelectedProperty(null)}
-        currency={currency}
-        isFavorite={selectedProperty ? favorites.includes(selectedProperty.id) : false}
-        onToggleFavorite={toggleFavorite}
-        onContactAgent={(prop) => {
-          setSelectedProperty(null);
-          setContactProperty(prop);
-        }}
-        onUpdatePropertyPrice={handleUpdatePropertyPrice}
-        onOpenMortgage={(price) => {
-          handleOpenMortgageWithPrice(price);
-        }}
-        onOpenDocumentWallet={() => {
-          setSelectedProperty(null);
-          setIsDocumentWalletOpen(true);
-        }}
-        onOpenDealTracker={() => {
-          setSelectedProperty(null);
-          setIsDealTrackerOpen(true);
-        }}
-      />
+      {selectedProperty && (
+        <PropertyDetailModal
+          property={selectedProperty}
+          onClose={() => setSelectedProperty(null)}
+          currency={currency}
+          isFavorite={selectedProperty ? favorites.includes(selectedProperty.id) : false}
+          onToggleFavorite={toggleFavorite}
+          onContactAgent={(prop) => {
+            setSelectedProperty(null);
+            setContactProperty(prop);
+          }}
+          onUpdatePropertyPrice={handleUpdatePropertyPrice}
+          onOpenMortgage={(price) => {
+            handleOpenMortgageWithPrice(price);
+          }}
+          onOpenDocumentWallet={() => {
+            setSelectedProperty(null);
+            setIsDocumentWalletOpen(true);
+          }}
+          onOpenDealTracker={() => {
+            setSelectedProperty(null);
+            setIsDealTrackerOpen(true);
+          }}
+        />
+      )}
 
       {/* Contact Agent & Schedule Tour Modal */}
       <ContactAgentModal
@@ -1024,112 +1171,132 @@ export default function App() {
       />
 
       {/* Add / List Property with Custom Price Modal */}
-      <AddPropertyModal
-        isOpen={isAddPropertyOpen}
-        onClose={() => setIsAddPropertyOpen(false)}
-        onAddProperty={handleAddProperty}
-        currentCurrency={currency}
-      />
+      {isAddPropertyOpen && (
+        <AddPropertyModal
+          isOpen={isAddPropertyOpen}
+          onClose={() => setIsAddPropertyOpen(false)}
+          onAddProperty={handleAddProperty}
+          currentCurrency={currency}
+        />
+      )}
 
       {/* Mortgage / EMI Calculator Modal */}
-      <MortgageCalculatorModal
-        isOpen={isMortgageOpen}
-        onClose={() => setIsMortgageOpen(false)}
-        currency={currency}
-        initialPriceINR={mortgageInitialPrice}
-      />
+      {isMortgageOpen && (
+        <MortgageCalculatorModal
+          isOpen={isMortgageOpen}
+          onClose={() => setIsMortgageOpen(false)}
+          currency={currency}
+          initialPriceINR={mortgageInitialPrice}
+        />
+      )}
 
       {/* Comparison Modal */}
-      <ComparisonModal
-        isOpen={isCompareOpen}
-        onClose={() => setIsCompareOpen(false)}
-        comparedProperties={comparedProperties}
-        onRemoveFromCompare={toggleCompare}
-        onClearAll={() => setComparedIds([])}
-        currency={currency}
-        onSelectProperty={(prop) => {
-          setIsCompareOpen(false);
-          setSelectedProperty(prop);
-        }}
-        onContactAgent={(prop) => {
-          setIsCompareOpen(false);
-          setContactProperty(prop);
-        }}
-      />
+      {isCompareOpen && (
+        <ComparisonModal
+          isOpen={isCompareOpen}
+          onClose={() => setIsCompareOpen(false)}
+          comparedProperties={comparedProperties}
+          onRemoveFromCompare={toggleCompare}
+          onClearAll={() => setComparedIds([])}
+          currency={currency}
+          onSelectProperty={(prop) => {
+            setIsCompareOpen(false);
+            setSelectedProperty(prop);
+          }}
+          onContactAgent={(prop) => {
+            setIsCompareOpen(false);
+            setContactProperty(prop);
+          }}
+        />
+      )}
 
       {/* Agent Directory Modal */}
-      <AgentDirectoryModal
-        isOpen={isAgentsOpen}
-        onClose={() => setIsAgentsOpen(false)}
-        communicationProfile={communicationProfile}
-      />
+      {isAgentsOpen && (
+        <AgentDirectoryModal
+          isOpen={isAgentsOpen}
+          onClose={() => setIsAgentsOpen(false)}
+          communicationProfile={communicationProfile}
+        />
+      )}
 
       {/* Favorites Drawer */}
-      <FavoritesDrawer
-        isOpen={isFavoritesOpen}
-        onClose={() => setIsFavoritesOpen(false)}
-        favoriteProperties={favoriteProperties}
-        onRemoveFavorite={toggleFavorite}
-        onClearFavorites={() => setFavorites([])}
-        currency={currency}
-        onSelectProperty={(prop) => {
-          setIsFavoritesOpen(false);
-          setSelectedProperty(prop);
-        }}
-        onContactAgent={(prop) => {
-          setIsFavoritesOpen(false);
-          setContactProperty(prop);
-        }}
-      />
+      {isFavoritesOpen && (
+        <FavoritesDrawer
+          isOpen={isFavoritesOpen}
+          onClose={() => setIsFavoritesOpen(false)}
+          favoriteProperties={favoriteProperties}
+          onRemoveFavorite={toggleFavorite}
+          onClearFavorites={() => setFavorites([])}
+          currency={currency}
+          onSelectProperty={(prop) => {
+            setIsFavoritesOpen(false);
+            setSelectedProperty(prop);
+          }}
+          onContactAgent={(prop) => {
+            setIsFavoritesOpen(false);
+            setContactProperty(prop);
+          }}
+        />
+      )}
 
       {/* Cloud User Account & Authentication Modal */}
-      <AuthAndUserAccountModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        currentUser={currentUser}
-        onUpdateUser={(updated) => {
-          setCurrentUser(updated);
-          addToast('success', 'Account Updated', `Profile updated as ${updated.role.toUpperCase()}.`);
-        }}
-        onOpenDocumentWallet={() => setIsDocumentWalletOpen(true)}
-        onOpenDealTracker={() => setIsDealTrackerOpen(true)}
-      />
+      {isAuthModalOpen && (
+        <AuthAndUserAccountModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          currentUser={currentUser}
+          onUpdateUser={(updated) => {
+            setCurrentUser(updated);
+            addToast('success', 'Account Updated', `Profile updated as ${updated.role.toUpperCase()}.`);
+          }}
+          onOpenDocumentWallet={() => setIsDocumentWalletOpen(true)}
+          onOpenDealTracker={() => setIsDealTrackerOpen(true)}
+        />
+      )}
 
       {/* Buyer & Vendor Document Wallet (Online & Offline Patta) */}
-      <DocumentWalletModal
-        isOpen={isDocumentWalletOpen}
-        onClose={() => setIsDocumentWalletOpen(false)}
-        currentUser={currentUser}
-        onOpenDealTracker={() => setIsDealTrackerOpen(true)}
-      />
+      {isDocumentWalletOpen && (
+        <DocumentWalletModal
+          isOpen={isDocumentWalletOpen}
+          onClose={() => setIsDocumentWalletOpen(false)}
+          currentUser={currentUser}
+          onOpenDealTracker={() => setIsDealTrackerOpen(true)}
+        />
+      )}
 
       {/* Deal & Escrow Wallet Milestone Tracker */}
-      <DealEscrowTrackerModal
-        isOpen={isDealTrackerOpen}
-        onClose={() => setIsDealTrackerOpen(false)}
-        currentUser={currentUser}
-        currentCurrency={currency}
-        onOpenDocumentWallet={() => setIsDocumentWalletOpen(true)}
-      />
+      {isDealTrackerOpen && (
+        <DealEscrowTrackerModal
+          isOpen={isDealTrackerOpen}
+          onClose={() => setIsDealTrackerOpen(false)}
+          currentUser={currentUser}
+          currentCurrency={currency}
+          onOpenDocumentWallet={() => setIsDocumentWalletOpen(true)}
+        />
+      )}
 
       {/* Divine Entrance & Auspicious Darshan Modal */}
-      <DivineDarshanModal
-        isOpen={isDarshanOpen}
-        onClose={() => setIsDarshanOpen(false)}
-        customDeityImageUrl={brokerConfig.deityImageUrl}
-        onExplorePlots={() => {
-          setIsDarshanOpen(false);
-          const el = document.getElementById('listings-catalog');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }}
-      />
+      {isDarshanOpen && (
+        <DivineDarshanModal
+          isOpen={isDarshanOpen}
+          onClose={() => setIsDarshanOpen(false)}
+          customDeityImageUrl={brokerConfig.deityImageUrl}
+          onExplorePlots={() => {
+            setIsDarshanOpen(false);
+            const el = document.getElementById('listings-catalog');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+        />
+      )}
 
       {/* Auspicious Muhurtham, Horai & Vastu Guide Modal */}
-      <MuhurthamDetailsModal
-        isOpen={isMuhurthamOpen}
-        onClose={() => setIsMuhurthamOpen(false)}
-        brokerPhone={brokerConfig.primaryPhone}
-      />
+      {isMuhurthamOpen && (
+        <MuhurthamDetailsModal
+          isOpen={isMuhurthamOpen}
+          onClose={() => setIsMuhurthamOpen(false)}
+          brokerPhone={brokerConfig.primaryPhone}
+        />
+      )}
 
     </div>
   );

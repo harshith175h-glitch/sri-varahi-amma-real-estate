@@ -13,6 +13,7 @@ import {
 import { CurrencyCode, Property } from '../types';
 import { formatPrice } from '../utils/currency';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface FavoritesDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -34,10 +35,16 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
   onSelectProperty,
   onContactAgent,
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/45 backdrop-blur-xs flex justify-end">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-hidden bg-black/45 backdrop-blur-xs flex justify-end">
       <div className="relative bg-[#FCFAF7] border-l border-[#E5E1DA] w-full max-w-md h-full shadow-2xl text-[#1A1A1A] flex flex-col justify-between">
         
         {/* Drawer Header */}

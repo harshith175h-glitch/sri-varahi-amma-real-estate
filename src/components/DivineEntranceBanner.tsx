@@ -12,6 +12,7 @@ import { DivineArtworkGraphic } from './DivineArtworkGraphic';
 import { getDeityImage } from '../utils/imageStorage';
 import { DEFAULT_DEITY_PHOTO_URL } from '../data/deityAsset';
 
+import { readString } from '../utils/storage';
 interface DivineEntranceBannerProps {
   onOpenDarshan: () => void;
   onExplorePlots: () => void;
@@ -24,7 +25,7 @@ export const DivineEntranceBanner: React.FC<DivineEntranceBannerProps> = ({
   customDeityImageUrl,
 }) => {
   const [imgSrc, setImgSrc] = useState<string>(() => {
-    return customDeityImageUrl || localStorage.getItem('varahi_custom_deity_art') || DEFAULT_DEITY_PHOTO_URL || '';
+    return customDeityImageUrl || readString('deityArt', '') || DEFAULT_DEITY_PHOTO_URL;
   });
   const [hasError, setHasError] = useState(false);
 

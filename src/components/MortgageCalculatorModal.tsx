@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Calculator, 
@@ -11,6 +11,7 @@ import {
 import { CurrencyCode } from '../types';
 import { formatPrice, formatExactPrice, calculateEMI, convertToINR, convertFromINR, CURRENCY_CONFIGS } from '../utils/currency';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface MortgageCalculatorModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,9 +25,18 @@ export const MortgageCalculatorModal: React.FC<MortgageCalculatorModalProps> = (
   currency,
   initialPriceINR = 30000000, // ₹3.0 Cr default
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   const [propertyPriceINR, setPropertyPriceINR] = useState(initialPriceINR);
+
+  // The calculator is a single long-lived instance: opening it from a property
+  // used to leave the previous price/EMI on screen because the prop was only
+  // read once by useState. Re-sync whenever a new property opens it.
+  useEffect(() => {
+    setPropertyPriceINR(initialPriceINR);
+  }, [initialPriceINR]);
   const [downPaymentPct, setDownPaymentPct] = useState(20);
   const [interestRatePct, setInterestRatePct] = useState(8.5);
   const [tenureYears, setTenureYears] = useState(20);
@@ -40,7 +50,11 @@ export const MortgageCalculatorModal: React.FC<MortgageCalculatorModalProps> = (
   const interestPercentage = Math.round((totalInterestINR / (totalPaymentINR || 1)) * 100);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] p-6 sm:p-8 space-y-6">
         
         {/* Header */}

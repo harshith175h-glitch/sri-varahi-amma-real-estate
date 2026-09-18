@@ -18,6 +18,7 @@ import {
 import { DealTransaction, UserAccount, CurrencyCode } from '../types';
 import { formatPrice } from '../utils/currency';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface DealEscrowTrackerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -91,10 +92,16 @@ export const DealEscrowTrackerModal: React.FC<DealEscrowTrackerModalProps> = ({
   const [deal, setDeal] = useState<DealTransaction>(INITIAL_TRANSACTION);
   const [activeTab, setActiveTab] = useState<'timeline' | 'escrow_wallet' | 'sub_registrar'>('timeline');
 
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-3xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] flex flex-col font-sans">
         
         {/* Header */}

@@ -9,7 +9,8 @@ import {
   Phone, 
   ChevronLeft, 
   ChevronRight, 
-  CheckCircle2
+  CheckCircle2,
+  Scale
 } from 'lucide-react';
 import { CurrencyCode, Property, AreaUnit } from '../types';
 import { formatPrice } from '../utils/currency';
@@ -30,8 +31,11 @@ interface PropertyCardProps {
 export const PropertyCard: React.FC<PropertyCardProps> = ({
   property,
   areaUnit = 'auto',
+  currency = 'INR' as CurrencyCode,
   isFavorite,
   onToggleFavorite,
+  isCompared,
+  onToggleCompare,
   onSelectProperty,
   onContactAgent,
 }) => {
@@ -59,7 +63,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
     e.stopPropagation();
     const cleanNumber = property.agent.whatsapp.replace(/[^0-9]/g, '');
     const message = encodeURIComponent(
-      `Hello Harshith, I am interested in visiting "${property.title}" in ${property.locality}, ${property.city} listed for ${formatPrice(property.priceINR, 'INR', property.listingType)}. Please share exact location and title details.`
+      `Hello ${property.agent.name}, I am interested in visiting "${property.title}" in ${property.locality}, ${property.city} listed for ${formatPrice(property.priceINR, currency, property.listingType)}. Please share exact location and title details.`
     );
     window.open(`https://wa.me/${cleanNumber}?text=${message}`, '_blank', 'noopener,noreferrer');
   };
@@ -87,11 +91,13 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
         <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-2.5 sm:right-3 flex items-center justify-between pointer-events-none">
           
           <div className="flex items-center gap-1.5 flex-wrap pointer-events-auto">
-            {/* Patta Verification Badge */}
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 backdrop-blur-md text-[#1E7E34] text-[10px] font-sans font-bold border border-[#C3E6CB] shadow-xs">
-              <CheckCircle2 className="w-3 h-3 text-[#1E7E34]" />
-              <span>Patta Verified</span>
-            </span>
+            {/* Verification badge — only shown when the listing is actually verified */}
+            {property.isVerified && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 backdrop-blur-md text-[#1E7E34] text-[10px] font-sans font-bold border border-[#C3E6CB] shadow-xs">
+                <CheckCircle2 className="w-3 h-3 text-[#1E7E34]" aria-hidden="true" />
+                <span>{property.reraId ? `RERA ${property.reraId}` : 'Documents Verified'}</span>
+              </span>
+            )}
 
             {/* Type */}
             <span className="px-2.5 py-1 rounded-full text-[10px] font-sans font-semibold bg-[#1A1A1A]/90 backdrop-blur-md text-white">
@@ -99,18 +105,38 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
             </span>
           </div>
 
-          {/* Top Right: Clean Shortlist / Favorite Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(property.id);
-            }}
-            title={isFavorite ? 'Remove from saved' : 'Save property'}
-            className="p-2 rounded-full bg-white/90 hover:bg-white text-[#1A1A1A] transition shadow-sm pointer-events-auto"
-          >
-            <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-600 text-rose-600' : 'text-[#8C7A65]'}`} />
-          </button>
+          {/* Top Right: shortlist + compare */}
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCompare(property.id);
+              }}
+              aria-pressed={isCompared}
+              title={isCompared ? 'Remove from comparison' : 'Add to comparison'}
+              aria-label={isCompared ? `Remove ${property.title} from comparison` : `Add ${property.title} to comparison`}
+              className={`p-2 rounded-full transition shadow-sm ${
+                isCompared ? 'bg-[#1A1816] text-[#D4AF37]' : 'bg-white/90 hover:bg-white text-[#1A1A1A]'
+              }`}
+            >
+              <Scale className="w-4 h-4" aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(property.id);
+              }}
+              aria-pressed={isFavorite}
+              title={isFavorite ? 'Remove from saved' : 'Save property'}
+              aria-label={isFavorite ? `Remove ${property.title} from shortlist` : `Save ${property.title} to shortlist`}
+              className="p-2 rounded-full bg-white/90 hover:bg-white text-[#1A1A1A] transition shadow-sm"
+            >
+              <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-600 text-rose-600' : 'text-[#8C7A65]'}`} aria-hidden="true" />
+            </button>
+          </div>
 
         </div>
 
@@ -161,7 +187,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           <div className="flex items-baseline justify-between gap-2">
             <div>
               <span className="text-xl sm:text-2xl font-serif font-bold text-[#1A1816] tracking-tight">
-                {formatPrice(property.priceINR, 'INR', property.listingType)}
+                {formatPrice(property.priceINR, currency, property.listingType)}
               </span>
             </div>
             <span className="text-[11px] font-sans font-semibold text-[#8C7A65] bg-[#F4F0EA] px-2.5 py-0.5 rounded-md border border-[#E5E1DA]">
@@ -171,8 +197,17 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 
           {/* Title & Locality */}
           <div>
-            <h3 className="font-serif font-bold text-base sm:text-lg text-[#1A1A1A] group-hover:text-[#8C7A65] transition-colors line-clamp-1">
-              {property.title}
+            <h3 className="font-serif font-bold text-base sm:text-lg text-[#1A1A1A] line-clamp-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectProperty(property);
+                }}
+                className="text-left hover:text-[#8C7A65] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1816] focus-visible:ring-offset-1 rounded transition-colors"
+              >
+                {property.title}
+              </button>
             </h3>
             <p className="text-xs font-sans text-[#736B63] flex items-center gap-1 mt-0.5 line-clamp-1">
               <MapPin className="w-3.5 h-3.5 text-[#8C7A65] shrink-0" />
@@ -221,10 +256,12 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           
           {/* Broker Contact */}
           <div className="min-w-0">
-            <p className="text-xs font-sans font-bold text-[#1A1816] truncate">Sri Varahi Amma</p>
+            <p className="text-xs font-sans font-bold text-[#1A1816] truncate">{property.agent.name}</p>
             <p className="text-[11px] font-sans text-[#736B63] flex items-center gap-1">
-              <Phone className="w-3 h-3 text-[#D4AF37]" />
-              <span>+91 6383040407</span>
+              <Phone className="w-3 h-3 text-[#D4AF37]" aria-hidden="true" />
+              <a href={`tel:${property.agent.phone.replace(/[^0-9+]/g, '')}`} className="hover:underline">
+                {property.agent.phone}
+              </a>
             </p>
           </div>
 
@@ -236,6 +273,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
               type="button"
               onClick={handleWhatsAppQuick}
               title="Chat on WhatsApp"
+              aria-label={`Chat about ${property.title} on WhatsApp`}
               className="p-2 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#1E7E34] border border-[#25D366]/30 transition"
             >
               <MessageCircle className="w-4 h-4 text-[#128C7E]" />

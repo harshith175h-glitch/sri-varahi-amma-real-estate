@@ -29,6 +29,7 @@ import { CurrencyCode, Property, AreaUnit } from '../types';
 import { formatPrice, formatExactPrice, calculateEMI, convertToINR, convertFromINR, CURRENCY_CONFIGS } from '../utils/currency';
 import { getLandConversions, AREA_UNITS_CONFIG, formatLandArea } from '../utils/areaUnits';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface PropertyDetailModalProps {
   property: Property | null;
   onClose: () => void;
@@ -42,7 +43,18 @@ interface PropertyDetailModalProps {
   onOpenDealTracker?: () => void;
 }
 
-export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
+export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = (props) => {
+  // Same hook-ordering fix as ContactAgentModal: guard in a wrapper component so
+  // the inner component's hooks always run in the same order.
+  if (!props.property) return null;
+  return <PropertyDetailModalInner {...props} property={props.property} />;
+};
+
+interface PropertyDetailModalInnerProps extends Omit<PropertyDetailModalProps, 'property'> {
+  property: Property;
+}
+
+const PropertyDetailModalInner: React.FC<PropertyDetailModalInnerProps> = ({
   property,
   onClose,
   currency,
@@ -54,7 +66,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   onOpenDocumentWallet,
   onOpenDealTracker,
 }) => {
-  if (!property) return null;
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen: true, onClose });
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -108,7 +120,11 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-5xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] flex flex-col">
         
         {/* Sticky Top Header */}

@@ -14,6 +14,7 @@ import {
 import { Agent, CommunicationProfile } from '../types';
 import { MOCK_AGENTS } from '../data/mockProperties';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface AgentDirectoryModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,6 +41,8 @@ export const AgentDirectoryModal: React.FC<AgentDirectoryModalProps> = ({
   onSelectAgentProperties,
   communicationProfile,
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   const [regionFilter, setRegionFilter] = useState<'all' | 'india' | 'international'>('all');
@@ -85,7 +88,11 @@ export const AgentDirectoryModal: React.FC<AgentDirectoryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] p-6 sm:p-8 space-y-6">
         
         {/* Header */}

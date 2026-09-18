@@ -5,9 +5,12 @@ import {
   User, 
   Phone,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Globe,
+  Inbox
 } from 'lucide-react';
-import { UserAccount, PropertyRegion } from '../types';
+import { UserAccount, PropertyRegion, CurrencyCode } from '../types';
+import { CURRENCY_CONFIGS } from '../utils/currency';
 import { DEFAULT_DEITY_PHOTO_URL } from '../data/deityAsset';
 
 interface HeaderProps {
@@ -21,6 +24,11 @@ interface HeaderProps {
   onOpenProfile?: () => void;
   customLogoUrl?: string;
   onOpenDarshan?: () => void;
+  currency: CurrencyCode;
+  onCurrencyChange: (currency: CurrencyCode) => void;
+  /** True when the signed-in user is the owner/agent (unlocks the Owner Desk). */
+  isOwner?: boolean;
+  onOpenOwnerDesk?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +38,10 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuthModal,
   customLogoUrl,
   onOpenDarshan,
+  currency,
+  onCurrencyChange,
+  isOwner,
+  onOpenOwnerDesk,
 }) => {
   const effectiveLogo = customLogoUrl || DEFAULT_DEITY_PHOTO_URL || '';
   return (
@@ -51,7 +63,23 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center text-[11px] sm:text-xs font-sans">
+        <div className="flex items-center gap-3 text-[11px] sm:text-xs font-sans">
+          <label className="flex items-center gap-1.5">
+            <span className="sr-only">Display currency</span>
+            <Globe className="w-3.5 h-3.5 text-[#D4AF37]" aria-hidden="true" />
+            <select
+              value={currency}
+              onChange={(e) => onCurrencyChange(e.target.value as CurrencyCode)}
+              aria-label="Display currency"
+              className="bg-transparent text-[11px] sm:text-xs text-[#EDE8DF] border border-[#3A342C] rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] cursor-pointer"
+            >
+              {(Object.keys(CURRENCY_CONFIGS) as CurrencyCode[]).map((code) => (
+                <option key={code} value={code} className="text-[#1A1A1A]">
+                  {code} {CURRENCY_CONFIGS[code].symbol.trim()}
+                </option>
+              ))}
+            </select>
+          </label>
           <a 
             href="tel:+916383040407" 
             className="flex items-center gap-1.5 text-[#EDE8DF] hover:text-[#D4AF37] transition-colors"
@@ -129,6 +157,19 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
           
+          {/* Owner Desk (only for the signed-in owner/agent) */}
+          {isOwner && onOpenOwnerDesk && (
+            <button
+              type="button"
+              onClick={onOpenOwnerDesk}
+              title="Owner Desk — enquiries and published listings"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#171513] hover:bg-black border border-[#D4AF37]/40 text-[#D4AF37] text-xs font-bold transition shadow-xs"
+            >
+              <Inbox className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Owner Desk</span>
+            </button>
+          )}
+
           {/* Saved Shortlist / Favorites */}
           <button
             id="btn-open-favorites"

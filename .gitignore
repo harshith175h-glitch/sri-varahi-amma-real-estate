@@ -62,6 +62,8 @@ out
 # ============================================================================
 .cache/
 .env.*.cache
+data/*
+!data/.gitkeep
 public/deity*.jpg
 public/deity*.png
 public/*-image.json
@@ -92,3 +94,7 @@ htmlcov/
 *.key
 *.crt
 .secrets/
+
+# Generated review artifacts
+preview-snapshot.html
+preview-shots/

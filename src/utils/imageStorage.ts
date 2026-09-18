@@ -1,34 +1,13 @@
 // Safe persistent image storage and cross-device synchronization utility
+import { DEITY_FALLBACK_PATHS } from '../data/deityAsset';
+import { readString, writeString, removeKey } from './storage';
+
 let memoryImageCache: string | null = null;
 let isSyncing = false;
 
 const DB_NAME = 'SriVarahiRealEstateDB_v2';
 const STORE_NAME = 'site_assets';
 const DEITY_IMAGE_KEY = 'varahi_deity_artwork';
-
-function safeGetLocalStorage(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeSetLocalStorage(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch (e) {
-    console.warn(`localStorage save error for ${key}:`, e);
-  }
-}
-
-function safeRemoveLocalStorage(key: string): void {
-  try {
-    localStorage.removeItem(key);
-  } catch (e) {
-    console.warn(`localStorage remove error for ${key}:`, e);
-  }
-}
 
 function openDB(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
@@ -56,17 +35,31 @@ function openDB(): Promise<IDBDatabase | null> {
   });
 }
 
-// Push local image to backend server for global cross-device access
+/**
+ * Push the locally chosen artwork to the backend so other devices see it.
+ * The endpoint is admin-protected; when no admin token is configured the
+ * request is rejected by the server and we keep the image local-only instead
+ * of pretending it was synchronised.
+ */
 async function syncLocalToServer(dataUrl: string): Promise<void> {
   if (isSyncing) return;
+  const adminToken = readString('adminToken', '');
+  if (!adminToken) return;
+
   try {
     isSyncing = true;
-    await fetch('/api/deity-image', {
+    const res = await fetch('/api/deity-image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': adminToken,
+      },
       body: JSON.stringify({ imageUrl: dataUrl }),
     });
-    console.log('[imageStorage] Synchronized deity image to server for global device access');
+    if (!res.ok) {
+      console.warn('[imageStorage] Server rejected the upload (HTTP %d)', res.status);
+      return;
+    }
   } catch (err) {
     console.warn('[imageStorage] Server sync warning (will retry on next load):', err);
   } finally {
@@ -74,7 +67,7 @@ async function syncLocalToServer(dataUrl: string): Promise<void> {
   }
 }
 
-// Fetch image from server if missing on current device/browser
+// Fetch the server-cached artwork if this device has nothing stored yet.
 async function fetchImageFromServer(): Promise<string | null> {
   try {
     const res = await fetch('/api/deity-image');
@@ -82,7 +75,6 @@ async function fetchImageFromServer(): Promise<string | null> {
     if (res.ok && contentType && contentType.includes('application/json')) {
       const data = await res.json();
       if (data && data.imageUrl) {
-        console.log('[imageStorage] Loaded shared deity image from server');
         return data.imageUrl;
       }
     }
@@ -90,21 +82,20 @@ async function fetchImageFromServer(): Promise<string | null> {
     // ignore
   }
 
-  // Also check direct static images
-  try {
-    const geminiCheck = await fetch('/Gemini_Generated_Image_p7sjh2p7sjh2p7sj.png', { method: 'HEAD' });
-    const geminiType = geminiCheck.headers.get('content-type');
-    if (geminiCheck.ok && geminiType && geminiType.includes('image/')) {
-      return '/Gemini_Generated_Image_p7sjh2p7sjh2p7sj.png';
+  // Also check committed brand artwork / previously uploaded static images.
+  // A HEAD request is used so we never mistake the SPA fallback HTML for an
+  // image (the previous implementation asked for a hard-coded Gemini filename
+  // that no longer exists and could return index.html with a 200 status).
+  for (const candidate of DEITY_FALLBACK_PATHS) {
+    try {
+      const res = await fetch(candidate, { method: 'HEAD' });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.startsWith('image/')) {
+        return candidate;
+      }
+    } catch {
+      // ignore and try the next candidate
     }
-
-    const imgCheck = await fetch('/deity.jpg', { method: 'HEAD' });
-    const contentType = imgCheck.headers.get('content-type');
-    if (imgCheck.ok && contentType && contentType.includes('image/')) {
-      return '/deity.jpg';
-    }
-  } catch {
-    // ignore
   }
 
   return null;
@@ -133,7 +124,7 @@ export async function saveDeityImage(dataUrlOrBlob: string): Promise<void> {
   }
 
   if (dataUrlOrBlob.length < 2000000) {
-    safeSetLocalStorage('varahi_custom_deity_art', dataUrlOrBlob);
+    writeString('deityArt', dataUrlOrBlob);
   }
 
   try {
@@ -142,8 +133,8 @@ export async function saveDeityImage(dataUrlOrBlob: string): Promise<void> {
     // ignore
   }
 
-  // Sync to server so any external browser/device sees it
-  syncLocalToServer(dataUrlOrBlob);
+  // Sync to server so any external browser/device sees it (admin token required)
+  await syncLocalToServer(dataUrlOrBlob);
 }
 
 export async function getDeityImage(): Promise<string | null> {
@@ -168,7 +159,6 @@ export async function getDeityImage(): Promise<string | null> {
       });
       if (result) {
         memoryImageCache = result;
-        // Make sure server has it too
         syncLocalToServer(result);
         return result;
       }
@@ -177,8 +167,8 @@ export async function getDeityImage(): Promise<string | null> {
     // ignore
   }
 
-  // 2. Check localStorage
-  const local = safeGetLocalStorage('varahi_custom_deity_art');
+  // 2. Check localStorage (migrated key)
+  const local = readString('deityArt', '');
   if (local) {
     memoryImageCache = local;
     syncLocalToServer(local);
@@ -211,28 +201,10 @@ export async function clearDeityImage(): Promise<void> {
   } catch {
     // ignore
   }
-  safeRemoveLocalStorage('varahi_custom_deity_art');
+  removeKey('deityArt');
   try {
     window.dispatchEvent(new CustomEvent('deity-image-updated', { detail: null }));
   } catch {
     // ignore
   }
-}
-
-// Background auto-sync initialization on startup
-if (typeof window !== 'undefined') {
-  setTimeout(() => {
-    getDeityImage().then((img) => {
-      if (img) {
-        syncLocalToServer(img);
-      } else {
-        fetchImageFromServer().then((srvImg) => {
-          if (srvImg) {
-            memoryImageCache = srvImg;
-            window.dispatchEvent(new CustomEvent('deity-image-updated', { detail: srvImg }));
-          }
-        });
-      }
-    });
-  }, 100);
 }

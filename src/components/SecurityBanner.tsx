@@ -33,7 +33,7 @@ export const SecurityBanner: React.FC<SecurityBannerProps> = ({
           <div className="flex items-center gap-2 bg-[#262626] px-3 py-1.5 rounded-full border border-[#3D3D3D]">
             <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span className="font-semibold tracking-wide">
-              HTTPS 256-Bit SSL Encrypted
+              HTTPS Encrypted Connection
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
@@ -41,13 +41,13 @@ export const SecurityBanner: React.FC<SecurityBannerProps> = ({
           {/* Patta & Revenue Record */}
           <div className="flex items-center gap-2 text-[#D1C7BD]">
             <BadgeCheck className="w-4 h-4 text-[#C4A484] shrink-0" />
-            <span>Government Patta & 30-Yr EC Checked</span>
+            <span>Patta &amp; EC Documents Checked Listing-Wise</span>
           </div>
 
           {/* Direct Broker Desk Status */}
           <div className="hidden sm:flex items-center gap-2 text-[#D1C7BD]">
             <Clock className="w-3.5 h-3.5 text-[#C4A484] shrink-0" />
-            <span>Broker Response: <strong className="text-white">&lt; 15 Mins</strong></span>
+            <span>Broker Desk: <strong className="text-white">8 AM – 8 PM IST</strong></span>
           </div>
 
         </div>

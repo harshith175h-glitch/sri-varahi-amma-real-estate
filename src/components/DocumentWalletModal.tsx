@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { VaultDocument, DocumentTypeCategory, UserAccount } from '../types';
 
+import { useDialogA11y } from '../hooks/useDialogA11y';
 interface DocumentWalletModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -122,6 +123,8 @@ export const DocumentWalletModal: React.FC<DocumentWalletModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successBanner, setSuccessBanner] = useState('');
 
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   const handleAddNewDocument = (e: React.FormEvent) => {
@@ -180,7 +183,11 @@ export const DocumentWalletModal: React.FC<DocumentWalletModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative bg-[#FCFAF7] border border-[#E5E1DA] rounded-3xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl text-[#1A1A1A] flex flex-col font-sans">
         
         {/* Header */}
