@@ -29,11 +29,17 @@ A premium real estate platform offering verified plots, DTCP/CMDA approved layou
 | [AUDIT-REPORT.md](AUDIT-REPORT.md) | Full security/performance audit and what was fixed |
 | [PREVIEW-GUIDE.md](PREVIEW-GUIDE.md) | How to preview the site three ways + 18-step click-through |
 
-**Restoring demo content** (listings live in git-ignored `data/`, so they vanish on a rebuild):
+**Fresh clone / after a rebuild** — one command restores dependencies, `.env.local` and `data/`:
 
 ```bash
-BASE_URL=http://localhost:3000 BROKER_PIN=4821 bash scripts/seed-demo-listings.sh
+bash scripts/dev-bootstrap.sh                      # install + env + data dir
+npm run dev                                        # then start the server
+BASE_URL=http://localhost:3000 BROKER_PIN=4821 \
+  bash scripts/seed-demo-listings.sh               # restore the 2 demo listings
 ```
+
+Nothing in `.env.local` or `data/` is committed (secrets and runtime data), so a
+container rebuild always wipes them — `dev-bootstrap.sh` puts them back.
 
 ---
 
