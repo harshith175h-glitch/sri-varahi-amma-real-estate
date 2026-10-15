@@ -59,6 +59,8 @@ import {
   createProperty,
   updateProperty,
   uploadImage,
+  fetchSiteConfig,
+  saveSiteConfig,
 } from './utils/api';
 import { CompareBar } from './components/CompareBar';
 
@@ -272,6 +274,30 @@ export default function App() {
       console.warn('Storage warning for broker config:', e);
     }
   }, [brokerConfig]);
+
+  // Load the contact details published by the owner (server-side). These are the
+  // numbers every visitor sees; localStorage remains the offline fallback.
+  useEffect(() => {
+    let isMounted = true;
+    fetchSiteConfig()
+      .then((res) => {
+        if (!isMounted || !res.ok || !res.data?.config) return;
+        const published = res.data.config as Partial<BrokerContactConfig>;
+        setBrokerConfig((prev) => ({
+          ...prev,
+          ...published,
+          // Keep the artwork already resolved from IndexedDB unless the owner
+          // published a new one from another device.
+          deityImageUrl: published.deityImageUrl || prev.deityImageUrl,
+        }));
+      })
+      .catch(() => {
+        /* offline or static hosting: keep local values */
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // --- Toasts ---
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -663,7 +689,7 @@ export default function App() {
       {/* Auspicious Daily Subha Horai & Panchangam Banner */}
       <AuspiciousMuhurthamBanner
         onOpenMuhurthamModal={() => setIsMuhurthamOpen(true)}
-        brokerPhone={brokerConfig.primaryPhone}
+        brokerPhone={brokerConfig.phone}
       />
 
       {/* Auspicious Divine Entrance Banner (Lord Ganesha & Sri Varahi Amma) */}
@@ -1093,9 +1119,29 @@ export default function App() {
           isOpen={isBrokerSettingsOpen}
           onClose={() => setIsBrokerSettingsOpen(false)}
           config={brokerConfig}
-          onSaveConfig={(newCfg) => {
+          onSaveConfig={async (newCfg) => {
             setBrokerConfig(newCfg);
-            addToast('success', 'Broker Details Saved', 'Business contact, phone, and office details updated.');
+
+            const res = await saveSiteConfig(newCfg as unknown as Record<string, unknown>);
+            if (res.ok) {
+              addToast(
+                'success',
+                'Published to all visitors',
+                'Phone, WhatsApp and office details now show the new numbers on every device.'
+              );
+            } else if (res.status === 401) {
+              addToast(
+                'info',
+                'Saved on this device only',
+                'Sign in to the owner desk (or add the admin token in this panel) to publish these numbers for customers.'
+              );
+            } else {
+              addToast(
+                'info',
+                'Saved on this device only',
+                res.data?.error || 'The server rejected the update, so customers still see the previous numbers.'
+              );
+            }
           }}
         />
       )}
@@ -1294,7 +1340,7 @@ export default function App() {
         <MuhurthamDetailsModal
           isOpen={isMuhurthamOpen}
           onClose={() => setIsMuhurthamOpen(false)}
-          brokerPhone={brokerConfig.primaryPhone}
+          brokerPhone={brokerConfig.phone}
         />
       )}
 

@@ -60,6 +60,10 @@ check      "unknown API returns JSON"   404 "${BASE_URL}/api/does-not-exist"
 check      "anonymous branding upload is rejected" 401 \
   -X POST "${BASE_URL}/api/deity-image" -H 'Content-Type: application/json' \
   -d '{"imageUrl":"data:image/png;base64,iVBORw0KGgo="}'
+check "contact info is public to visitors" 200 "${BASE_URL}/api/site-config"
+check "contact info cannot be published anonymously" 401 \
+  -X PUT "${BASE_URL}/api/site-config" -H 'Content-Type: application/json' \
+  -d '{"agencyName":"Attacker","brokerName":"X","phone":"+91 9999999999","whatsapp":"+91 9999999999","email":"x@example.com","officeAddress":"nowhere"}'
 check      "lead inbox requires admin" 401 "${BASE_URL}/api/inquiries"
 check      "enquiry validation"        400 \
   -X POST "${BASE_URL}/api/inquiries" -H 'Content-Type: application/json' \
@@ -154,6 +158,24 @@ if [ -n "$BROKER_PIN" ]; then
         -d '{"priceINR":4750000}'
       check "owner can delete a listing" 200 \
         -X DELETE "${BASE_URL}/api/properties/${listing_id}" -H "$AUTH"
+    fi
+
+    # --- published contact details (footer phone / WhatsApp numbers) ---------
+    check "owner can publish contact info" 200 \
+      -X PUT "${BASE_URL}/api/site-config" -H 'Content-Type: application/json' -H "$AUTH" \
+      -d '{"agencyName":"Sri Varahi Amma Real Estate","brokerName":"Sri Varahi Amma Broker Desk (Harshith & Team)","phone":"+91 6383040407","whatsapp":"+91 6383040407","email":"harshith175h@gmail.com","officeAddress":"Main Road, Hosur, Krishnagiri District, Tamil Nadu - 635109","operatingHours":"Monday - Sunday: 8:00 AM - 9:00 PM IST","primaryLocations":["Hosur (City HQ)","Krishnagiri District","Bangalore / Bengaluru Border"]}'
+
+    check "invalid contact info is rejected" 400 \
+      -X PUT "${BASE_URL}/api/site-config" -H 'Content-Type: application/json' -H "$AUTH" \
+      -d '{"agencyName":"X","brokerName":"Y","phone":"12","whatsapp":"12","email":"not-an-email","officeAddress":""}'
+
+    published_phone=$(curl -s "${BASE_URL}/api/site-config" | sed -n 's/.*"phone":"\([^"]*\)".*/\1/p')
+    if [ -n "$published_phone" ]; then
+      green "PASS  visitors are served the published number (${published_phone})"
+      PASS=$((PASS + 1))
+    else
+      red "FAIL  published contact info is not served back to visitors"
+      FAIL=$((FAIL + 1))
     fi
 
     check "lead inbox works with an owner session" 200 -H "$AUTH" "${BASE_URL}/api/inquiries"

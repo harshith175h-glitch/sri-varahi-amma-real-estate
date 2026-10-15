@@ -215,6 +215,31 @@ export async function updateInquiryStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Site contact config (footer phone / WhatsApp numbers)
+//
+// Stored server-side so the owner's edit reaches every visitor, not just the
+// browser that made it (it used to be localStorage-only).
+// ---------------------------------------------------------------------------
+
+export type StoredSiteConfig = Record<string, unknown>;
+
+export async function fetchSiteConfig(): Promise<
+  ApiResult<{ config: StoredSiteConfig | null }>
+> {
+  return request('/api/site-config');
+}
+
+export async function saveSiteConfig(
+  config: Record<string, unknown>
+): Promise<ApiResult<{ success?: boolean; config?: StoredSiteConfig; error?: string }>> {
+  return request('/api/site-config', {
+    method: 'PUT',
+    headers: staffHeaders(),
+    body: JSON.stringify(config),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Admin token (used for the protected logo/branding upload)
 // ---------------------------------------------------------------------------
 

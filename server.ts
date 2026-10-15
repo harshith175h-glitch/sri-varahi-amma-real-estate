@@ -204,6 +204,7 @@ const publicDir = path.join(process.cwd(), "public");
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const inquiriesFile = path.join(dataDir, "inquiries.jsonl");
 const propertiesFile = path.join(dataDir, "properties.json");
+const siteConfigFile = path.join(dataDir, "site-config.json");
 const uploadsDir = path.join(dataDir, "uploads");
 
 if (process.env.VERCEL) {
@@ -1174,6 +1175,126 @@ app.delete(
     await writeProperties(next);
     console.log(`🗑️  Listing removed: ${id}`);
     res.json({ success: true, removed: id });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// SITE CONTACT CONFIG — the phone / WhatsApp numbers shown in the footer,
+// banners and every "consult" button.
+//
+// These values used to live only in the owner's browser (localStorage), so
+// editing "Contact Info" changed the numbers for the owner's device alone and
+// every customer kept seeing the hard-coded defaults. They are now stored on
+// the server and served to all visitors, exactly like listings.
+// ---------------------------------------------------------------------------
+
+const SITE_CONFIG_LIMITS = {
+  agencyName: 120,
+  brokerName: 120,
+  phone: 24,
+  whatsapp: 24,
+  email: 160,
+  officeAddress: 400,
+  operatingHours: 160,
+  googleRating: 80,
+  totalDealsClosed: 120,
+  locations: 12,
+  locationItem: 80,
+} as const;
+
+async function readSiteConfig(): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await fsp.readFile(siteConfigFile, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSiteConfig(config: Record<string, unknown>): Promise<void> {
+  await fsp.writeFile(siteConfigFile, JSON.stringify(config, null, 2), "utf-8");
+}
+
+/**
+ * Normalise an untrusted contact-config payload.
+ * Required: agency name, broker name, phone, WhatsApp, email, office address.
+ */
+function normaliseSiteConfig(body: Record<string, unknown>): {
+  config?: Record<string, unknown>;
+  error?: string;
+} {
+  const agencyName = cleanText(body.agencyName, SITE_CONFIG_LIMITS.agencyName);
+  const brokerName = cleanText(body.brokerName, SITE_CONFIG_LIMITS.brokerName);
+  const phone = cleanText(body.phone, SITE_CONFIG_LIMITS.phone);
+  const whatsapp = cleanText(body.whatsapp, SITE_CONFIG_LIMITS.whatsapp);
+  const email = cleanText(body.email, SITE_CONFIG_LIMITS.email);
+  const officeAddress = cleanText(body.officeAddress, SITE_CONFIG_LIMITS.officeAddress);
+
+  const errors: string[] = [];
+  if (!agencyName) errors.push("agency name is required");
+  if (!brokerName) errors.push("broker / executive name is required");
+  if (!isValidPhone(phone)) errors.push("calling number must contain 10-15 digits");
+  if (!isValidPhone(whatsapp)) errors.push("WhatsApp number must contain 10-15 digits");
+  if (!isValidEmail(email)) errors.push("email address looks invalid");
+  if (!officeAddress) errors.push("office address is required");
+
+  const deityImageUrl = typeof body.deityImageUrl === "string" ? body.deityImageUrl : "";
+  if (deityImageUrl && !/^(data:image\/|https?:\/\/|\/)/.test(deityImageUrl)) {
+    errors.push("deity image must be an image URL, a data URL or an /uploads/ path");
+  }
+  if (deityImageUrl.length > 2_500_000) {
+    errors.push("deity image is too large — upload a smaller photo");
+  }
+  if (errors.length > 0) return { error: errors.join("; ") };
+
+  const config: Record<string, unknown> = {
+    agencyName,
+    brokerName,
+    phone,
+    whatsapp,
+    email,
+    officeAddress,
+    operatingHours: cleanText(body.operatingHours, SITE_CONFIG_LIMITS.operatingHours),
+    googleRating: cleanText(body.googleRating, SITE_CONFIG_LIMITS.googleRating),
+    totalDealsClosed: cleanText(body.totalDealsClosed, SITE_CONFIG_LIMITS.totalDealsClosed),
+    primaryLocations: asStringArray(
+      body.primaryLocations,
+      SITE_CONFIG_LIMITS.locations,
+      SITE_CONFIG_LIMITS.locationItem
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+  if (deityImageUrl) config.deityImageUrl = deityImageUrl;
+
+  return { config };
+}
+
+/** GET /api/site-config — public contact details every visitor sees. */
+app.get("/api/site-config", async (_req: Request, res: Response) => {
+  const config = await readSiteConfig();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ config });
+});
+
+/** PUT /api/site-config — publish contact details to all visitors (owner only). */
+app.put(
+  "/api/site-config",
+  rateLimit(15 * 60 * 1000, 30, "site-config"),
+  requireStaff,
+  async (req: Request, res: Response): Promise<void> => {
+    const { config, error } = normaliseSiteConfig((req.body || {}) as Record<string, unknown>);
+    if (!config) {
+      res.status(400).json({ error: error || "Invalid contact details." });
+      return;
+    }
+    await writeSiteConfig(config);
+    console.log(
+      `📇 Contact info published: ${config.phone} / ${config.whatsapp} (${config.agencyName})`
+    );
+    res.json({ success: true, config });
   }
 );
 

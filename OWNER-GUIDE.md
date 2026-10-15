@@ -113,19 +113,24 @@ npm run dev                    # open http://localhost:3000
    and set `LEAD_WEBHOOK_URL` to get an instant notification.
 3. **Add real SMS OTP** (MSG91 / Twilio / Gupshup) — about half a day of work; the hook is already in
    `POST /api/auth/otp/request`.
-4. ✅ **Publishing real listings now works** — open **Owner Desk → Published listings → Publish a new
+4. ✅ **Editing your contact numbers now publishes them to every visitor.** The *⚙️ Edit Contact Info*
+   panel (bottom of the page) used to save to your own browser only, so customers kept seeing the old
+   numbers; it is now stored on the server (`/api/site-config`) and every visitor is served the values
+   you saved. Sign in as the owner (or paste the admin token in that panel) or the site will warn that
+   the change stayed on your device.
+5. ✅ **Publishing real listings now works** — open **Owner Desk → Published listings → Publish a new
    plot / property**, add your own site photos from your phone, and it appears at the top of the site
    for every visitor. *(Remaining upgrade: move this from a file on the server into a database —
    Supabase / Postgres — when the number of listings grows or you have several staff.)*
-5. **Replace the remaining stock photos.** The two demo listings and the built-in catalogue still use
+6. **Replace the remaining stock photos.** The two demo listings and the built-in catalogue still use
    Unsplash images. They belong to someone else, load slowly and buyers recognise them as generic —
    re-publish your real plots with your own photos (the upload button now stores them on the server).
-6. **Publish compliance pages**: RERA / broker registration number, terms of use, refund & token
+7. **Publish compliance pages**: RERA / broker registration number, terms of use, refund & token
    policy, privacy policy (DPDP Act) and a "verify documents before paying" note. Show them in the
    footer next to Security Protocol.
-7. **Decide the escrow story.** Either partner with a licensed escrow/bank service, or clearly label
+8. **Decide the escrow story.** Either partner with a licensed escrow/bank service, or clearly label
    the escrow screens as "illustrative". Do not let buyers think money is protected when it is not.
-8. **Nice-to-have, high return:** map-based plot search, saved-search alerts on WhatsApp, a real
+9. **Nice-to-have, high return:** map-based plot search, saved-search alerts on WhatsApp, a real
    site-visit calendar, full Tamil/Telugu/Kannada/Hindi interface (the text already exists in the
    code), and a stamp-duty / registration-cost calculator.
 

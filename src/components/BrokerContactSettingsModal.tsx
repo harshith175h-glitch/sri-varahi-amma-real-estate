@@ -158,7 +158,8 @@ export const BrokerContactSettingsModal: React.FC<BrokerContactSettingsModalProp
           <div className="p-3.5 rounded-xl bg-[#F4F0EA] border border-[#E5E1DA] flex items-center gap-3 text-xs text-[#736B63]">
             <Sparkles className="w-4 h-4 text-[#C4A484] shrink-0" />
             <span>
-              All settings here are protected. Public customers viewing the website cannot edit or change photos.
+              Saved details are published to <strong>every visitor on every device</strong> — these are the
+              numbers customers call and message. Customers cannot edit them.
             </span>
           </div>
 
@@ -232,7 +233,8 @@ export const BrokerContactSettingsModal: React.FC<BrokerContactSettingsModalProp
 
                 <p className="text-[11px] text-[#8C7A65]">
                   Select any photo or enter an image URL. The image is stored on this device straight away; to
-                  publish it for every visitor, enter the shared admin token below.
+                  publish it — and the contact numbers above — for every visitor, sign in to the owner desk or
+                  enter the shared admin token below.
                 </p>
 
                 <div className="pt-1">

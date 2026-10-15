@@ -167,12 +167,18 @@ GEMINI_API_KEY=
 | Publish / edit / delete a listing | `POST/PATCH/DELETE /api/properties` | owner session or admin token |
 | Property photo upload | `POST /api/uploads` → served at `/uploads/<file>` | owner session or admin token |
 | Public catalogue | `GET /api/properties` | everyone |
+| Published contact details (footer phone / WhatsApp) | `GET /api/site-config` | everyone reads; owner publishes |
 | Logo / branding upload | `POST /api/deity-image` | admin token |
 | Buyer OTP login | `POST /api/auth/otp/request` \| `/verify` | any visitor |
 | Owner PIN login | `POST /api/auth/broker` | owner |
 
 Open the **Owner Desk** from the header after signing in with your owner PIN: it lists every
 enquiry with one-tap call/WhatsApp and every published listing with inline price editing.
+
+The **⚙️ Edit Contact Info** panel at the bottom of the page edits the phone / WhatsApp / office
+details. Saving publishes them server-side (`data/site-config.json`), so the new numbers appear for
+**every visitor on every device** — not just the browser that made the edit. Signed out (or without
+the admin token) the values are kept on that device only, and the site says so instead of pretending.
 
 ## Quality Gates
 
